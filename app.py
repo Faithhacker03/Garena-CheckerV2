@@ -19,6 +19,7 @@ import html
 import threading
 import queue
 import traceback
+import concurrent.futures
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs, urlencode
 from collections import OrderedDict
@@ -67,6 +68,10 @@ for folder in [DATA_DIR, UPLOAD_FOLDER, RESULTS_BASE_DIR, LOGS_BASE_DIR, APP_DAT
 # --- Per-User Session State Management for Concurrent Checks ---
 user_check_sessions = {}
 sessions_lock = threading.Lock()
+# --- State for Admin Background Tasks (Proxy Scraping/Testing) ---
+admin_tasks = {}
+admin_tasks_lock = threading.Lock()
+
 
 def get_or_create_user_session(username):
     """Safely gets or creates a session state for a given user."""
@@ -97,6 +102,81 @@ COUNTRY_KEYWORD_MAP = {
     "TW": ["TAIWAN", "TW"], "TH": ["THAILAND", "TH"], "RU": ["RUSSIA", "RUSSIAN FEDERATION", "RU"],
     "PT": ["PORTUGAL", "PT"],
 }
+
+PROXY_SOURCES = {
+    'http': list(set([
+        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http",
+        "https://api.proxyscrape.com/?request=displayproxies&proxytype=http",
+        "https://api.openproxylist.xyz/http.txt",
+        "https://openproxylist.xyz/http.txt",
+        "https://proxyspace.pro/http.txt",
+        "https://proxyspace.pro/https.txt",
+        "https://raw.githubusercontent.com/almroot/proxylist/master/list.txt",
+        "https://raw.githubusercontent.com/aslisk/proxyhttps/main/https.txt",
+        "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/HTTP.txt",
+        "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+        "https://raw.githubusercontent.com/hendrikbgr/Free-Proxy-Repo/master/proxy_list.txt",
+        "https://raw.githubusercontent.com/HyperBeats/proxy-list/main/http.txt",
+        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-https.txt",
+        "https://raw.githubusercontent.com/mertguvencli/http-proxy-list/main/proxy-list/data.txt",
+        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/https.txt",
+        "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+        "https://raw.githubusercontent.com/opsxcq/proxy-list/master/list.txt",
+        "https://raw.githubusercontent.com/proxy4parsing/proxy-list/main/http.txt",
+        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
+        "https://raw.githubusercontent.com/RX4096/proxy-list/main/online/http.txt",
+        "https://raw.githubusercontent.com/RX4096/proxy-list/main/online/https.txt",
+        "https://raw.githubusercontent.com/saisuiu/uiu/main/free.txt",
+        "https://raw.githubusercontent.com/saschazesiger/Free-Proxies/master/proxies/http.txt",
+        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/https.txt",
+        "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt",
+        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+        "https://raw.githubusercontent.com/UserR3X/proxy-list/main/online/http.txt",
+        "https://raw.githubusercontent.com/UserR3X/proxy-list/main/online/https.txt",
+        "https://rootjazz.com/proxies/proxies.txt",
+        "https://sheesh.rip/http.txt",
+        "https://www.proxy-list.download/api/v1/get?type=http",
+        "https://www.proxy-list.download/api/v1/get?type=https",
+        "https://www.proxyscan.io/download?type=http",
+    ])),
+    'socks4': list(set([
+        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4",
+        "https://api.proxyscrape.com/?request=displayproxies&proxytype=socks4",
+        "https://api.openproxylist.xyz/socks4.txt",
+        "https://openproxylist.xyz/socks4.txt",
+        "https://proxyspace.pro/socks4.txt",
+        "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/SOCKS4.txt",
+        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks4.txt",
+        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks4.txt",
+        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS4_RAW.txt",
+        "https://raw.githubusercontent.com/saschazesiger/Free-Proxies/master/proxies/socks4.txt",
+        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks4.txt",
+        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
+        "https://www.proxy-list.download/api/v1/get?type=socks4",
+        "https://www.proxyscan.io/download?type=socks4",
+    ])),
+    'socks5': list(set([
+        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5",
+        "https://api.openproxylist.xyz/socks5.txt",
+        "https://openproxylist.xyz/socks5.txt",
+        "https://proxyspace.pro/socks5.txt",
+        "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/SOCKS5.txt",
+        "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
+        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt",
+        "https://raw.githubusercontent.com/manuGMG/proxy-365/main/SOCKS5.txt",
+        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt",
+        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt",
+        "https://raw.githubusercontent.com/saschazesiger/Free-Proxies/master/proxies/socks5.txt",
+        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
+        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
+        "https://www.proxy-list.download/api/v1/get?type=socks5",
+        "https://www.proxyscan.io/download?type=socks5",
+    ]))
+}
+
 
 # --- User and Key Management ---
 def load_data(file_path):
@@ -916,6 +996,169 @@ def test_proxy():
     
     save_data(proxies, PROXIES_FILE)
     return jsonify({"status": "success", "proxy": proxy_to_test})
+    
+# --- New Routes for Proxy Scraper and Bulk Tester ---
+
+def scrape_proxies_task(proxy_type):
+    """Background task to scrape proxies from sources."""
+    with admin_tasks_lock:
+        admin_tasks['scraping'] = {'running': True, 'progress': 0, 'total': 0, 'found': 0, 'message': 'Starting...'}
+    
+    urls = PROXY_SOURCES.get(proxy_type, [])
+    if not urls:
+        with admin_tasks_lock:
+            admin_tasks['scraping']['running'] = False
+            admin_tasks['scraping']['message'] = f"No sources for type '{proxy_type}'."
+        return
+
+    with admin_tasks_lock:
+        admin_tasks['scraping']['total'] = len(urls)
+
+    scraped_proxies = set()
+    for i, url in enumerate(urls):
+        try:
+            with admin_tasks_lock:
+                admin_tasks['scraping']['progress'] = i + 1
+                admin_tasks['scraping']['message'] = f"Fetching {url.split('/')[2]}..."
+            
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            
+            content = response.text
+            found_in_url = 0
+            for line in content.splitlines():
+                # Regex to find ip:port format
+                match = re.match(r'^\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)\s*$', line.strip())
+                if match:
+                    scraped_proxies.add(match.group(1))
+                    found_in_url += 1
+        except requests.RequestException as e:
+            print(f"Failed to fetch {url}: {e}")
+        time.sleep(0.1) # Be nice to servers
+
+    with admin_tasks_lock:
+        admin_tasks['scraping']['message'] = f"Processing {len(scraped_proxies)} unique proxies..."
+
+    current_proxies = load_data(PROXIES_FILE)
+    existing_proxies = {(p['proxy'], p['protocol']) for p in current_proxies}
+    
+    added_count = 0
+    for proxy_str in scraped_proxies:
+        if (proxy_str, proxy_type) not in existing_proxies:
+            new_proxy = {
+                "id": uuid.uuid4().hex,
+                "proxy": proxy_str,
+                "protocol": proxy_type,
+                "status": "untested"
+            }
+            current_proxies.append(new_proxy)
+            added_count += 1
+    
+    save_data(current_proxies, PROXIES_FILE)
+    
+    with admin_tasks_lock:
+        admin_tasks['scraping']['running'] = False
+        admin_tasks['scraping']['found'] = added_count
+        admin_tasks['scraping']['message'] = f"Scraping complete. Added {added_count} new proxies."
+
+@app.route('/admin/scrape_proxies', methods=['POST'])
+def scrape_proxies():
+    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    with admin_tasks_lock:
+        if admin_tasks.get('scraping', {}).get('running'):
+            return jsonify({"status": "error", "message": "A scraping task is already running."}), 409
+    
+    proxy_type = request.json.get('type')
+    if proxy_type not in PROXY_SOURCES:
+        return jsonify({"status": "error", "message": "Invalid proxy type."}), 400
+
+    thread = threading.Thread(target=scrape_proxies_task, args=(proxy_type,))
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({"status": "success", "message": f"Started scraping for {proxy_type} proxies."})
+
+def test_single_proxy_worker(proxy):
+    """Worker function for testing a single proxy."""
+    protocol = proxy.get('protocol', 'http')
+    proxy_url = f"{protocol}://{proxy['proxy']}"
+    test_proxies = {'http': proxy_url, 'https': proxy_url}
+    
+    try:
+        # Use a common, reliable target for testing
+        response = requests.get("https://auth.garena.com", proxies=test_proxies, timeout=10)
+        proxy['status'] = 'good' if response.status_code == 200 else 'bad'
+    except requests.exceptions.RequestException:
+        proxy['status'] = 'bad'
+    
+    with admin_tasks_lock:
+        if 'testing' in admin_tasks:
+            admin_tasks['testing']['progress'] += 1
+    
+    return proxy
+
+def test_all_proxies_task():
+    """Background task to test all proxies."""
+    with admin_tasks_lock:
+        admin_tasks['testing'] = {'running': True, 'progress': 0, 'total': 0, 'message': 'Loading proxies...'}
+
+    proxies_to_test = load_data(PROXIES_FILE)
+    if not proxies_to_test:
+        with admin_tasks_lock:
+            admin_tasks['testing']['running'] = False
+            admin_tasks['testing']['message'] = "No proxies to test."
+        return
+
+    with admin_tasks_lock:
+        admin_tasks['testing']['total'] = len(proxies_to_test)
+        admin_tasks['testing']['message'] = f"Testing {len(proxies_to_test)} proxies..."
+
+    updated_proxies = []
+    # Use a ThreadPoolExecutor for concurrent testing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        future_to_proxy = {executor.submit(test_single_proxy_worker, p): p for p in proxies_to_test}
+        for future in concurrent.futures.as_completed(future_to_proxy):
+            updated_proxies.append(future.result())
+
+    save_data(updated_proxies, PROXIES_FILE)
+
+    good_count = sum(1 for p in updated_proxies if p['status'] == 'good')
+    with admin_tasks_lock:
+        admin_tasks['testing']['running'] = False
+        admin_tasks['testing']['message'] = f"Testing complete. Found {good_count} good proxies."
+
+@app.route('/admin/test_all_proxies', methods=['POST'])
+def test_all_proxies():
+    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    with admin_tasks_lock:
+        if admin_tasks.get('testing', {}).get('running'):
+            return jsonify({"status": "error", "message": "A testing task is already running."}), 409
+    
+    thread = threading.Thread(target=test_all_proxies_task)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({"status": "success", "message": "Started testing all proxies."})
+    
+@app.route('/admin/clear_bad_proxies', methods=['POST'])
+def clear_bad_proxies():
+    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    
+    proxies = load_data(PROXIES_FILE)
+    initial_count = len(proxies)
+    good_proxies = [p for p in proxies if p.get('status') != 'bad']
+    final_count = len(good_proxies)
+    
+    save_data(good_proxies, PROXIES_FILE)
+    
+    removed_count = initial_count - final_count
+    return jsonify({"status": "success", "message": f"Removed {removed_count} bad proxies."})
+
+@app.route('/admin/task_status')
+def get_admin_task_status():
+    if session.get('user', {}).get('username') != 'admin': return jsonify({}), 403
+    with admin_tasks_lock:
+        return jsonify(admin_tasks)
 
 # --- PROXY-MOD: New User Route to Get Good Proxies ---
 @app.route('/get_proxies')
