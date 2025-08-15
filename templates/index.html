@@ -1,3 +1,5 @@
+#--- START OF FILE index.html ---
+
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark" data-theme-color="default">
 <head>
@@ -306,7 +308,6 @@
                                     <input type="text" id="proxy-input" class="form-control" placeholder="ip:port" required>
                                     <select id="proxy-protocol" class="form-select" style="max-width: 120px;">
                                         <option value="http" selected>HTTP</option>
-                                        <option value="https">HTTPS</option>
                                         <option value="socks4">SOCKS4</option>
                                         <option value="socks5">SOCKS5</option>
                                     </select>
@@ -832,7 +833,15 @@
                             method: 'POST', headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({ id: proxyId })
                         }).then(res => res.json()).then(data => {
-                            loadAdminProxies();
+                            if (data.status === 'success' && data.proxy) {
+                                let statusBadge;
+                                if (data.proxy.status === 'good') statusBadge = `<span class="badge bg-success">Good</span>`;
+                                else statusBadge = `<span class="badge bg-danger">Bad</span>`;
+                                row.querySelector('.status-cell').innerHTML = statusBadge;
+                            }
+                        }).finally(() => {
+                           button.disabled = false;
+                           button.innerHTML = '<i class="bi bi-broadcast"></i>';
                         });
                     } else if (button.classList.contains('delete-proxy-btn')) {
                         if (!confirm('Are you sure you want to delete this proxy?')) return;
@@ -874,6 +883,7 @@
                         testerStatusDiv.textContent = data.testing.message;
                         testAllProxiesBtn.disabled = false;
                         loadAdminProxies();
+                        loadGoodProxiesForUser(); // Update user dropdown too
                     }
                 });
             }
