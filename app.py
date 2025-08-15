@@ -1,3 +1,5 @@
+#--- START OF FILE app.py ---
+
 # --- START OF FILE app.py ---
 
 # --- START OF MERGED V1.py ---
@@ -593,15 +595,16 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                 proxy_to_use = random.choice(good_proxies)
             else:
                 log_message(user_session, "[⚠️] Random proxy selected, but no 'good' proxies are available. Continuing without proxy.", "text-warning")
-        else: # Specific proxy selected
+        else: # Specific proxy selected by ip:port string
             proxy_to_use = next((p for p in all_proxies if p.get('proxy') == proxy_selection), None)
             if not proxy_to_use:
                 log_message(user_session, f"[⚠️] Selected proxy {proxy_selection} not found. Continuing without proxy.", "text-warning")
 
         if proxy_to_use:
-            proxy_str = f"{proxy_to_use['protocol']}://{proxy_to_use['proxy']}"
-            s.proxies = {'http': proxy_str, 'https': proxy_str}
-            log_message(user_session, f"[🌐] Using proxy: {proxy_to_use['proxy']} ({proxy_to_use['protocol']})", "text-info")
+            protocol = proxy_to_use['protocol']
+            proxy_url = f"{protocol}://{proxy_to_use['proxy']}"
+            s.proxies = {'http': proxy_url, 'https': proxy_url}
+            log_message(user_session, f"[🌐] Using {protocol.upper()} proxy: {proxy_to_use['proxy']}", "text-info")
 
     try:
         if force_restart:
@@ -973,8 +976,25 @@ def delete_proxy():
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Proxy not found."}), 404
 
+def _test_proxy_logic(proxy):
+    """Helper function containing the actual proxy testing logic."""
+    protocol = proxy.get('protocol', 'http')
+    proxy_url = f"{protocol}://{proxy['proxy']}"
+    test_proxies = {'http': proxy_url, 'https': proxy_url}
+    try:
+        # A lightweight, reliable endpoint to check if the proxy works at all.
+        response = requests.get("https://api.ipify.org", proxies=test_proxies, timeout=15)
+        # Check if we got a valid IP address back.
+        if response.status_code == 200 and re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', response.text.strip()):
+            proxy['status'] = 'good'
+        else:
+            proxy['status'] = 'bad'
+    except requests.exceptions.RequestException:
+        proxy['status'] = 'bad'
+    return proxy
+
 @app.route('/admin/test_proxy', methods=['POST'])
-def test_proxy():
+def test_proxy_endpoint():
     if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
     proxy_id = request.json.get('id')
     proxies = load_data(PROXIES_FILE)
@@ -982,21 +1002,11 @@ def test_proxy():
     if not proxy_to_test:
         return jsonify({"status": "error", "message": "Proxy not found."}), 404
     
-    proxy_url = f"{proxy_to_test['protocol']}://{proxy_to_test['proxy']}"
-    test_proxies = {'http': proxy_url, 'https': proxy_url}
-    
-    try:
-        response = requests.get("https://auth.garena.com", proxies=test_proxies, timeout=10)
-        if response.status_code == 200:
-            proxy_to_test['status'] = 'good'
-        else:
-            proxy_to_test['status'] = 'bad'
-    except requests.exceptions.RequestException:
-        proxy_to_test['status'] = 'bad'
+    proxy_to_test = _test_proxy_logic(proxy_to_test)
     
     save_data(proxies, PROXIES_FILE)
     return jsonify({"status": "success", "proxy": proxy_to_test})
-    
+
 # --- New Routes for Proxy Scraper and Bulk Tester ---
 
 def scrape_proxies_task(proxy_type):
@@ -1023,15 +1033,13 @@ def scrape_proxies_task(proxy_type):
             
             response = requests.get(url, timeout=15)
             response.raise_for_status()
-            
             content = response.text
-            found_in_url = 0
-            for line in content.splitlines():
-                # Regex to find ip:port format
-                match = re.match(r'^\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)\s*$', line.strip())
-                if match:
-                    scraped_proxies.add(match.group(1))
-                    found_in_url += 1
+            
+            # Use a more robust regex to find all ip:port formats in the content
+            found_proxies_in_content = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}\b', content)
+            if found_proxies_in_content:
+                scraped_proxies.update(found_proxies_in_content)
+
         except requests.RequestException as e:
             print(f"Failed to fetch {url}: {e}")
         time.sleep(0.1) # Be nice to servers
@@ -1059,7 +1067,7 @@ def scrape_proxies_task(proxy_type):
     with admin_tasks_lock:
         admin_tasks['scraping']['running'] = False
         admin_tasks['scraping']['found'] = added_count
-        admin_tasks['scraping']['message'] = f"Scraping complete. Added {added_count} new proxies."
+        admin_tasks['scraping']['message'] = f"Scraping complete. Added {added_count} new {proxy_type.upper()} proxies."
 
 @app.route('/admin/scrape_proxies', methods=['POST'])
 def scrape_proxies():
@@ -1079,22 +1087,11 @@ def scrape_proxies():
     return jsonify({"status": "success", "message": f"Started scraping for {proxy_type} proxies."})
 
 def test_single_proxy_worker(proxy):
-    """Worker function for testing a single proxy."""
-    protocol = proxy.get('protocol', 'http')
-    proxy_url = f"{protocol}://{proxy['proxy']}"
-    test_proxies = {'http': proxy_url, 'https': proxy_url}
-    
-    try:
-        # Use a common, reliable target for testing
-        response = requests.get("https://auth.garena.com", proxies=test_proxies, timeout=10)
-        proxy['status'] = 'good' if response.status_code == 200 else 'bad'
-    except requests.exceptions.RequestException:
-        proxy['status'] = 'bad'
-    
+    """Worker function for testing a single proxy in a thread pool."""
+    proxy = _test_proxy_logic(proxy)
     with admin_tasks_lock:
-        if 'testing' in admin_tasks:
+        if 'testing' in admin_tasks and admin_tasks['testing'].get('running'):
             admin_tasks['testing']['progress'] += 1
-    
     return proxy
 
 def test_all_proxies_task():
@@ -1103,29 +1100,38 @@ def test_all_proxies_task():
         admin_tasks['testing'] = {'running': True, 'progress': 0, 'total': 0, 'message': 'Loading proxies...'}
 
     proxies_to_test = load_data(PROXIES_FILE)
-    if not proxies_to_test:
+    # Only test 'untested' proxies to be more efficient
+    untested_proxies = [p for p in proxies_to_test if p.get('status') == 'untested']
+    if not untested_proxies:
         with admin_tasks_lock:
             admin_tasks['testing']['running'] = False
-            admin_tasks['testing']['message'] = "No proxies to test."
+            admin_tasks['testing']['message'] = "No untested proxies to test."
         return
 
     with admin_tasks_lock:
-        admin_tasks['testing']['total'] = len(proxies_to_test)
-        admin_tasks['testing']['message'] = f"Testing {len(proxies_to_test)} proxies..."
+        admin_tasks['testing']['total'] = len(untested_proxies)
+        admin_tasks['testing']['message'] = f"Testing {len(untested_proxies)} proxies..."
 
-    updated_proxies = []
+    tested_proxies_map = {}
     # Use a ThreadPoolExecutor for concurrent testing
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        future_to_proxy = {executor.submit(test_single_proxy_worker, p): p for p in proxies_to_test}
+        future_to_proxy = {executor.submit(test_single_proxy_worker, p): p for p in untested_proxies}
         for future in concurrent.futures.as_completed(future_to_proxy):
-            updated_proxies.append(future.result())
+            tested_proxy = future.result()
+            tested_proxies_map[tested_proxy['id']] = tested_proxy
 
-    save_data(updated_proxies, PROXIES_FILE)
+    # Merge results back into the main list
+    all_proxies = load_data(PROXIES_FILE)
+    for proxy in all_proxies:
+        if proxy['id'] in tested_proxies_map:
+            proxy['status'] = tested_proxies_map[proxy['id']]['status']
 
-    good_count = sum(1 for p in updated_proxies if p['status'] == 'good')
+    save_data(all_proxies, PROXIES_FILE)
+
+    good_count = sum(1 for p in all_proxies if p['status'] == 'good')
     with admin_tasks_lock:
         admin_tasks['testing']['running'] = False
-        admin_tasks['testing']['message'] = f"Testing complete. Found {good_count} good proxies."
+        admin_tasks['testing']['message'] = f"Testing complete. Total good proxies: {good_count}."
 
 @app.route('/admin/test_all_proxies', methods=['POST'])
 def test_all_proxies():
@@ -1138,7 +1144,7 @@ def test_all_proxies():
     thread.daemon = True
     thread.start()
     
-    return jsonify({"status": "success", "message": "Started testing all proxies."})
+    return jsonify({"status": "success", "message": "Started testing all untested proxies."})
     
 @app.route('/admin/clear_bad_proxies', methods=['POST'])
 def clear_bad_proxies():
