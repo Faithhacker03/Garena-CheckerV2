@@ -44,7 +44,7 @@ APP_DATA_DIR = os.path.join(DATA_DIR, 'app_data')
 USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 KEYS_FILE = os.path.join(DATA_DIR, 'keys.json')
 ANNOUNCEMENTS_FILE = os.path.join(DATA_DIR, 'announcements.json')
-PROXIES_FILE = os.path.join(DATA_DIR, 'proxies.json') # PROXY-MOD: New file for proxies
+
 
 # --- Necessary Packages ---
 import requests
@@ -83,9 +83,7 @@ for folder in [DATA_DIR, UPLOAD_FOLDER, RESULTS_BASE_DIR, LOGS_BASE_DIR, APP_DAT
 # --- Per-User Session State Management for Concurrent Checks ---
 user_check_sessions = {}
 sessions_lock = threading.Lock()
-# --- State for Admin Background Tasks (Proxy Scraping/Testing) ---
-admin_tasks = {}
-admin_tasks_lock = threading.Lock()
+
 
 
 def get_or_create_user_session(username):
@@ -118,79 +116,7 @@ COUNTRY_KEYWORD_MAP = {
     "PT": ["PORTUGAL", "PT"],
 }
 
-PROXY_SOURCES = {
-    'http': list(set([
-        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http",
-        "https://api.proxyscrape.com/?request=displayproxies&proxytype=http",
-        "https://api.openproxylist.xyz/http.txt",
-        "https://openproxylist.xyz/http.txt",
-        "https://proxyspace.pro/http.txt",
-        "https://proxyspace.pro/https.txt",
-        "https://raw.githubusercontent.com/almroot/proxylist/master/list.txt",
-        "https://raw.githubusercontent.com/aslisk/proxyhttps/main/https.txt",
-        "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/HTTP.txt",
-        "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
-        "https://raw.githubusercontent.com/hendrikbgr/Free-Proxy-Repo/master/proxy_list.txt",
-        "https://raw.githubusercontent.com/HyperBeats/proxy-list/main/http.txt",
-        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
-        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-https.txt",
-        "https://raw.githubusercontent.com/mertguvencli/http-proxy-list/main/proxy-list/data.txt",
-        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
-        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/https.txt",
-        "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-        "https://raw.githubusercontent.com/opsxcq/proxy-list/master/list.txt",
-        "https://raw.githubusercontent.com/proxy4parsing/proxy-list/main/http.txt",
-        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
-        "https://raw.githubusercontent.com/RX4096/proxy-list/main/online/http.txt",
-        "https://raw.githubusercontent.com/RX4096/proxy-list/main/online/https.txt",
-        "https://raw.githubusercontent.com/saisuiu/uiu/main/free.txt",
-        "https://raw.githubusercontent.com/saschazesiger/Free-Proxies/master/proxies/http.txt",
-        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
-        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/https.txt",
-        "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-        "https://raw.githubusercontent.com/UserR3X/proxy-list/main/online/http.txt",
-        "https://raw.githubusercontent.com/UserR3X/proxy-list/main/online/https.txt",
-        "https://rootjazz.com/proxies/proxies.txt",
-        "https://sheesh.rip/http.txt",
-        "https://www.proxy-list.download/api/v1/get?type=http",
-        "https://www.proxy-list.download/api/v1/get?type=https",
-        "https://www.proxyscan.io/download?type=http",
-    ])),
-    'socks4': list(set([
-        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4",
-        "https://api.proxyscrape.com/?request=displayproxies&proxytype=socks4",
-        "https://api.openproxylist.xyz/socks4.txt",
-        "https://openproxylist.xyz/socks4.txt",
-        "https://proxyspace.pro/socks4.txt",
-        "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/SOCKS4.txt",
-        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks4.txt",
-        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks4.txt",
-        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS4_RAW.txt",
-        "https://raw.githubusercontent.com/saschazesiger/Free-Proxies/master/proxies/socks4.txt",
-        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks4.txt",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
-        "https://www.proxy-list.download/api/v1/get?type=socks4",
-        "https://www.proxyscan.io/download?type=socks4",
-    ])),
-    'socks5': list(set([
-        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5",
-        "https://api.openproxylist.xyz/socks5.txt",
-        "https://openproxylist.xyz/socks5.txt",
-        "https://proxyspace.pro/socks5.txt",
-        "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/SOCKS5.txt",
-        "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
-        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt",
-        "https://raw.githubusercontent.com/manuGMG/proxy-365/main/SOCKS5.txt",
-        "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt",
-        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt",
-        "https://raw.githubusercontent.com/saschazesiger/Free-Proxies/master/proxies/socks5.txt",
-        "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
-        "https://www.proxy-list.download/api/v1/get?type=socks5",
-        "https://www.proxyscan.io/download?type=socks5",
-    ]))
-}
+
 
 
 # --- User and Key Management ---
@@ -286,7 +212,6 @@ def getpass(password, v1, v2):
     decryption_key = generate_decryption_key(password_md5, v1, v2)
     return encrypt_aes_256_ecb(password_md5, decryption_key)
 
-# PROXY-MOD: Function refactored to accept a requests.Session object
 def get_datadome_cookie(s, user_session):
     url = 'https://dd.garena.com/js/'
     headers = {'accept': '*/*','accept-encoding': 'gzip, deflate, br, zstd','accept-language': 'en-US,en;q=0.9','cache-control': 'no-cache','content-type': 'application/x-www-form-urlencoded','origin': 'https://account.garena.com','pragma': 'no-cache','referer': 'https://account.garena.com/','user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'}
@@ -304,7 +229,6 @@ def get_datadome_cookie(s, user_session):
         return None
     except requests.exceptions.RequestException: return None
 
-# PROXY-MOD: Function refactored to accept a requests.Session object
 def fetch_new_datadome_pool(s, user_session, num_cookies=5):
     log_message(user_session, f"[⚙️] Attempting to fetch {num_cookies} new DataDome cookies...", "text-info")
     new_pool = []
@@ -338,7 +262,6 @@ def save_datadome_cookie(user_session, cookie_value):
         save_data(cookie_pool, file_path)
         log_message(user_session, "[💾] New DataDome Cookie saved to pool.", "text-info")
 
-# PROXY-MOD: Function refactored to accept a requests.Session object
 def check_login(s, user_session, account_username, _id, encryptedpassword, password, selected_header, cookies, dataa, date, selected_cookie_module):
     cookies["datadome"] = dataa
     login_params = {'app_id': '100082', 'account': account_username, 'password': encryptedpassword, 'redirect_uri': redrov, 'format': 'json', 'id': _id}
@@ -410,7 +333,6 @@ def check_login(s, user_session, account_username, _id, encryptedpassword, passw
         else: return f"[FAILED] 'access_token' not found in grant response."
     except (requests.RequestException, json.JSONDecodeError) as e: return f"[FAILED] Token grant failed: {e}"
 
-# PROXY-MOD: Function refactored to accept a requests.Session object
 def show_level(s, user_session, access_token, selected_header, sso, token, newdate, cookie):
     url = "https://auth.codm.garena.com/auth/auth/callback_n"
     params = {"site": "https://api-delete-request.codm.garena.co.id/oauth/callback/", "access_token": access_token}
@@ -512,7 +434,6 @@ def get_request_data(selected_cookie_module):
     headers = {'Host': 'auth.garena.com', 'Connection': 'keep-alive', 'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"', 'sec-ch-ua-mobile': '?1', 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36', 'sec-ch-ua-platform': '"Android"', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty', 'Referer': 'https://auth.garena.com/universal/oauth?all_platforms=1&response_type=token&locale=en-SG&client_id=100082&redirect_uri=https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/', 'Accept-Encoding': 'gzip, deflate, br, zstd', 'Accept-Language': 'en-US,en;q=0.9'}
     return cookies, headers
 
-# PROXY-MOD: Function refactored to accept a requests.Session object
 def check_account(s, user_session, username, password, date, datadome_cookie, selected_cookie_module):
     max_retries = 3
     for attempt in range(max_retries):
@@ -533,8 +454,6 @@ def check_account(s, user_session, username, password, date, datadome_cookie, se
             else: return f"[FAILED] HTTP Status: {response.status_code}"
         except requests.exceptions.RequestException as e:
             error_str = str(e).lower()
-            if "proxy" in error_str:
-                return f"[FAILED] Proxy Error: {e}"
             if "failed to establish a new connection" in error_str or "max retries exceeded" in error_str or "network is unreachable" in error_str:
                 log_message(user_session, f"[⚠️] Connection error for {username}. Retrying ({attempt + 1}/{max_retries})...", "text-warning")
                 if attempt < max_retries - 1: time.sleep(5); continue
@@ -587,8 +506,7 @@ def clear_progress(username):
     progress_file = PROGRESS_STATE_FILE_TEMPLATE.format(hashlib.md5(username.encode()).hexdigest())
     if os.path.exists(progress_file): os.remove(progress_file)
 
-# PROXY-MOD: Function signature updated to accept proxy_selection
-def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number, proxy_selection, custom_cookie, user_info, user_session):
+def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number, custom_cookie, user_info, user_session):
     log_message(user_session, "[⚠️ VERCEL NOTE] Checker is running on a serverless platform. Task will be terminated after the timeout limit.", "text-warning")
     status_lock = user_session['status_lock']
     stop_event = user_session['stop_event']
@@ -597,27 +515,7 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
     username = user_info['username']
     is_complete = False
 
-    # PROXY-MOD: Setup requests session with selected proxy
     s = requests.Session()
-    proxy_to_use = None
-    if proxy_selection and proxy_selection != 'none':
-        all_proxies = load_data(PROXIES_FILE)
-        if proxy_selection == 'random':
-            good_proxies = [p for p in all_proxies if p.get('status') == 'good']
-            if good_proxies:
-                proxy_to_use = random.choice(good_proxies)
-            else:
-                log_message(user_session, "[⚠️] Random proxy selected, but no 'good' proxies are available. Continuing without proxy.", "text-warning")
-        else: # Specific proxy selected by ip:port string
-            proxy_to_use = next((p for p in all_proxies if p.get('proxy') == proxy_selection), None)
-            if not proxy_to_use:
-                log_message(user_session, f"[⚠️] Selected proxy {proxy_selection} not found. Continuing without proxy.", "text-warning")
-
-        if proxy_to_use:
-            protocol = proxy_to_use['protocol']
-            proxy_url = f"{protocol}://{proxy_to_use['proxy']}"
-            s.proxies = {'http': proxy_url, 'https': proxy_url}
-            log_message(user_session, f"[🌐] Using {protocol.upper()} proxy: {proxy_to_use['proxy']}", "text-info")
 
     try:
         if force_restart:
@@ -841,10 +739,9 @@ def start_check():
     auto_delete = 'auto_delete' in request.form
     force_restart = 'force_restart' in request.form
     telegram_level_filter = request.form.get('telegram_level_filter', 'none')
-    proxy_selection = request.form.get('proxy_selection', 'none') # PROXY-MOD
     custom_cookie = request.form.get('custom_cookie', '').strip() # CUSTOM COOKIE
     log_message(user_session, "Starting new check...", "text-info")
-    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, proxy_selection, custom_cookie, session['user'], user_session )) # PROXY-MOD & CUSTOM COOKIE
+    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, custom_cookie, session['user'], user_session )) # CUSTOM COOKIE
     thread.daemon = True; thread.start()
     user_session['thread'] = thread
     return redirect(url_for('index'))
@@ -881,11 +778,10 @@ def captcha_action():
     action = request.form.get('action')
     log_message(user_session, f"Captcha action received: {action}", "text-info")
     if action == 'fetch_pool':
-        # PROXY-MOD: Use a temporary session for fetching cookies if checker is running with proxy
         s = requests.Session()
         user_session = get_or_create_user_session(username)
         if user_session['status']['running']:
-            log_message(user_session, "Fetching new cookies with your system IP, not the checker's proxy.", "text-info")
+            log_message(user_session, "Fetching new cookies with your system IP.", "text-info")
         new_pool = fetch_new_datadome_pool(s, user_session, num_cookies=5)
         if new_pool:
             log_message(user_session, f"Fetched {len(new_pool)} cookies. They will be saved for this session.", "text-info")
@@ -957,251 +853,6 @@ def post_announcement():
     announcements.append(new_announcement); save_data(announcements, ANNOUNCEMENTS_FILE)
     return jsonify({"status": "success", "message": "Announcement posted."})
 
-# --- PROXY-MOD: New Admin Routes for Proxy Management ---
-@app.route('/admin/proxies', methods=['GET'])
-def get_admin_proxies():
-    if session.get('user', {}).get('username') != 'admin': return jsonify([]), 403
-    return jsonify(load_data(PROXIES_FILE))
-
-@app.route('/admin/add_proxy', methods=['POST'])
-def add_proxy():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    data = request.json
-    proxy_str = data.get('proxy')
-    protocol = data.get('protocol')
-    if not proxy_str or not protocol:
-        return jsonify({"status": "error", "message": "Proxy and protocol are required."}), 400
-    proxies = load_data(PROXIES_FILE)
-    if any(p['proxy'] == proxy_str and p['protocol'] == protocol for p in proxies):
-        return jsonify({"status": "error", "message": "This proxy already exists."}), 409
-    new_proxy = {
-        "id": uuid.uuid4().hex,
-        "proxy": proxy_str,
-        "protocol": protocol,
-        "status": "untested"
-    }
-    proxies.append(new_proxy)
-    save_data(proxies, PROXIES_FILE)
-    return jsonify({"status": "success", "proxy": new_proxy})
-
-@app.route('/admin/delete_proxy', methods=['POST'])
-def delete_proxy():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    proxy_id = request.json.get('id')
-    proxies = load_data(PROXIES_FILE)
-    new_proxies = [p for p in proxies if p.get('id') != proxy_id]
-    if len(new_proxies) < len(proxies):
-        save_data(new_proxies, PROXIES_FILE)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Proxy not found."}), 404
-
-def _test_proxy_logic(proxy):
-    """Helper function containing the actual proxy testing logic."""
-    protocol = proxy.get('protocol', 'http')
-    proxy_url = f"{protocol}://{proxy['proxy']}"
-    test_proxies = {'http': proxy_url, 'https': proxy_url}
-    try:
-        # A lightweight, reliable endpoint to check if the proxy works at all.
-        response = requests.get("https://api.ipify.org", proxies=test_proxies, timeout=15)
-        # Check if we got a valid IP address back.
-        if response.status_code == 200 and re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', response.text.strip()):
-            proxy['status'] = 'good'
-        else:
-            proxy['status'] = 'bad'
-    except requests.exceptions.RequestException:
-        proxy['status'] = 'bad'
-    return proxy
-
-@app.route('/admin/test_proxy', methods=['POST'])
-def test_proxy_endpoint():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    proxy_id = request.json.get('id')
-    proxies = load_data(PROXIES_FILE)
-    proxy_to_test = next((p for p in proxies if p.get('id') == proxy_id), None)
-    if not proxy_to_test:
-        return jsonify({"status": "error", "message": "Proxy not found."}), 404
-    
-    proxy_to_test = _test_proxy_logic(proxy_to_test)
-    
-    save_data(proxies, PROXIES_FILE)
-    return jsonify({"status": "success", "proxy": proxy_to_test})
-
-# --- New Routes for Proxy Scraper and Bulk Tester ---
-
-def scrape_proxies_task(proxy_type, limit):
-    """Background task to scrape proxies from sources."""
-    with admin_tasks_lock:
-        admin_tasks['scraping'] = {'running': True, 'progress': 0, 'total': 0, 'found': 0, 'message': 'Starting...'}
-    
-    urls = PROXY_SOURCES.get(proxy_type, [])
-    if not urls:
-        with admin_tasks_lock:
-            admin_tasks['scraping']['running'] = False
-            admin_tasks['scraping']['message'] = f"No sources for type '{proxy_type}'."
-        return
-
-    with admin_tasks_lock:
-        admin_tasks['scraping']['total'] = len(urls)
-
-    scraped_proxies = set()
-    for i, url in enumerate(urls):
-        try:
-            with admin_tasks_lock:
-                admin_tasks['scraping']['progress'] = i + 1
-                admin_tasks['scraping']['message'] = f"Fetching {url.split('/')[2]}..."
-            
-            response = requests.get(url, timeout=15)
-            response.raise_for_status()
-            content = response.text
-            
-            # Use a more robust regex to find all ip:port formats in the content
-            found_proxies_in_content = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}\b', content)
-            if found_proxies_in_content:
-                scraped_proxies.update(found_proxies_in_content)
-
-        except requests.RequestException as e:
-            print(f"Failed to fetch {url}: {e}")
-        time.sleep(0.1) # Be nice to servers
-
-    with admin_tasks_lock:
-        admin_tasks['scraping']['message'] = f"Processing {len(scraped_proxies)} unique proxies..."
-
-    current_proxies = load_data(PROXIES_FILE)
-    existing_proxies = {(p['proxy'], p['protocol']) for p in current_proxies}
-    
-    # Shuffle the list before applying the limit to get a random sample from all sources
-    unique_proxies_list = list(scraped_proxies)
-    random.shuffle(unique_proxies_list)
-    
-    added_count = 0
-    for proxy_str in unique_proxies_list:
-        if added_count >= limit:
-            with admin_tasks_lock:
-                 admin_tasks['scraping']['message'] = f"Reached limit of {limit}. Added {added_count} new proxies."
-            break
-        if (proxy_str, proxy_type) not in existing_proxies:
-            new_proxy = {
-                "id": uuid.uuid4().hex,
-                "proxy": proxy_str,
-                "protocol": proxy_type,
-                "status": "untested"
-            }
-            current_proxies.append(new_proxy)
-            added_count += 1
-    
-    save_data(current_proxies, PROXIES_FILE)
-    
-    with admin_tasks_lock:
-        admin_tasks['scraping']['running'] = False
-        admin_tasks['scraping']['found'] = added_count
-        final_message = admin_tasks['scraping'].get('message', '') # Keep limit message if it was set
-        if not final_message.startswith("Reached limit"):
-            final_message = f"Scraping complete. Added {added_count} new {proxy_type.upper()} proxies."
-        admin_tasks['scraping']['message'] = final_message
-
-@app.route('/admin/scrape_proxies', methods=['POST'])
-def scrape_proxies():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    with admin_tasks_lock:
-        if admin_tasks.get('scraping', {}).get('running'):
-            return jsonify({"status": "error", "message": "A scraping task is already running."}), 409
-    
-    proxy_type = request.json.get('type')
-    try:
-        limit = int(request.json.get('limit', 500))
-        if limit < 100: limit = 100
-    except (ValueError, TypeError):
-        limit = 500
-        
-    if proxy_type not in PROXY_SOURCES:
-        return jsonify({"status": "error", "message": "Invalid proxy type."}), 400
-
-    thread = threading.Thread(target=scrape_proxies_task, args=(proxy_type, limit))
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({"status": "success", "message": f"Started scraping for {proxy_type} proxies."})
-
-def test_single_proxy_worker(proxy):
-    """Worker function for testing a single proxy in a thread pool."""
-    proxy = _test_proxy_logic(proxy)
-    with admin_tasks_lock:
-        if 'testing' in admin_tasks and admin_tasks['testing'].get('running'):
-            admin_tasks['testing']['progress'] += 1
-    return proxy
-
-def test_all_proxies_task():
-    """Background task to test all proxies."""
-    with admin_tasks_lock:
-        admin_tasks['testing'] = {'running': True, 'progress': 0, 'total': 0, 'message': 'Loading proxies...'}
-
-    proxies_to_test = load_data(PROXIES_FILE)
-    # Only test 'untested' proxies to be more efficient
-    untested_proxies = [p for p in proxies_to_test if p.get('status') == 'untested']
-    if not untested_proxies:
-        with admin_tasks_lock:
-            admin_tasks['testing']['running'] = False
-            admin_tasks['testing']['message'] = "No untested proxies to test."
-        return
-
-    with admin_tasks_lock:
-        admin_tasks['testing']['total'] = len(untested_proxies)
-        admin_tasks['testing']['message'] = f"Testing {len(untested_proxies)} proxies..."
-
-    tested_proxies_map = {}
-    # Use a ThreadPoolExecutor for concurrent testing
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        future_to_proxy = {executor.submit(test_single_proxy_worker, p): p for p in untested_proxies}
-        for future in concurrent.futures.as_completed(future_to_proxy):
-            tested_proxy = future.result()
-            tested_proxies_map[tested_proxy['id']] = tested_proxy
-
-    # Merge results back into the main list
-    all_proxies = load_data(PROXIES_FILE)
-    for proxy in all_proxies:
-        if proxy['id'] in tested_proxies_map:
-            proxy['status'] = tested_proxies_map[proxy['id']]['status']
-
-    save_data(all_proxies, PROXIES_FILE)
-
-    good_count = sum(1 for p in all_proxies if p['status'] == 'good')
-    with admin_tasks_lock:
-        admin_tasks['testing']['running'] = False
-        admin_tasks['testing']['message'] = f"Testing complete. Total good proxies: {good_count}."
-
-@app.route('/admin/test_all_proxies', methods=['POST'])
-def test_all_proxies():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    with admin_tasks_lock:
-        if admin_tasks.get('testing', {}).get('running'):
-            return jsonify({"status": "error", "message": "A testing task is already running."}), 409
-    
-    thread = threading.Thread(target=test_all_proxies_task)
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({"status": "success", "message": "Started testing all untested proxies."})
-    
-@app.route('/admin/clear_bad_proxies', methods=['POST'])
-def clear_bad_proxies():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    
-    proxies = load_data(PROXIES_FILE)
-    initial_count = len(proxies)
-    good_proxies = [p for p in proxies if p.get('status') != 'bad']
-    final_count = len(good_proxies)
-    
-    save_data(good_proxies, PROXIES_FILE)
-    
-    removed_count = initial_count - final_count
-    return jsonify({"status": "success", "message": f"Removed {removed_count} bad proxies."})
-
-@app.route('/admin/task_status')
-def get_admin_task_status():
-    if session.get('user', {}).get('username') != 'admin': return jsonify({}), 403
-    with admin_tasks_lock:
-        return jsonify(admin_tasks)
-
 # --- Admin route to view hardcoded cookies ---
 @app.route('/admin/hardcoded_cookies')
 def get_hardcoded_cookies():
@@ -1218,14 +869,6 @@ def get_hardcoded_cookies():
         cookies_info.append({"number": i + 1, "value": partial_cookie})
     
     return jsonify(cookies_info)
-
-# --- PROXY-MOD: New User Route to Get Good Proxies ---
-@app.route('/get_proxies')
-def get_good_proxies():
-    if 'user' not in session: return jsonify([]), 401
-    all_proxies = load_data(PROXIES_FILE)
-    good_proxies = [p for p in all_proxies if p.get('status') == 'good']
-    return jsonify(good_proxies)
 
 @app.route('/get_latest_announcement')
 def get_latest_announcement():
