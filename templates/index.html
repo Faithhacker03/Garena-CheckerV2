@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kenze Garena  Checker</title>
+    <title>Kenze Garena Checker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
@@ -174,6 +174,11 @@
                                 <!-- Good proxies will be populated here by JS -->
                             </select>
                         </div>
+                        
+                        <div class="mb-3">
+                            <label for="custom_cookie_input" class="form-label">Custom DataDome Cookie (Optional)</label>
+                            <input type="text" class="form-control" id="custom_cookie_input" name="custom_cookie" placeholder="Overrides other cookie settings">
+                        </div>
 
                         <div class="mb-3">
                             <label for="cookie_module" class="form-label">Cookie Module</label>
@@ -186,7 +191,7 @@
                         <div class="mb-3" id="cookie-number-input-wrapper" style="display: none;">
                             <label for="cookie_number_input" class="form-label">Use Fixed Cookie Number</label>
                             <input type="number" class="form-control" id="cookie_number_input" name="cookie_number" min="1" placeholder="e.g., 200 (optional)">
-                            <div class="form-text">Leave empty to cycle.</div>
+                            <div class="form-text">Leave empty to cycle. Admins can view numbers in Admin Panel.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Telegram Notifications</label>
@@ -280,7 +285,10 @@
                     <div class="card bg-dark border-secondary mb-3">
                         <div class="card-body">
                             <h5 class="card-title"><i class="bi bi-cloud-download"></i> Proxy Scraper</h5>
-                            <p class="small text-muted">Scrape fresh proxies from public sources.</p>
+                            <div class="input-group input-group-sm mb-2">
+                                <span class="input-group-text">Max to Add</span>
+                                <input type="number" id="scrape-limit-input" class="form-control" value="500" min="100">
+                            </div>
                             <div id="proxy-scraper-btns" class="d-grid gap-2 d-sm-flex justify-content-sm-center">
                                 <button class="btn btn-sm btn-outline-info proxy-scrape-btn" data-proxy-type="http">Scrape HTTP</button>
                                 <button class="btn btn-sm btn-outline-info proxy-scrape-btn" data-proxy-type="socks4">Scrape SOCKS4</button>
@@ -330,6 +338,27 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <button class="btn btn-link text-decoration-none w-100 text-start text-white p-0" type="button" data-bs-toggle="collapse" data-bs-target="#hardcodedCookiesCollapse">
+                                    <i class="bi bi-cpu-fill"></i> View Hardcoded Cookies
+                                </button>
+                            </h5>
+                        </div>
+                        <div id="hardcodedCookiesCollapse" class="collapse">
+                            <div class="card-body">
+                                <div class="table-responsive" style="max-height: 200px;">
+                                    <table class="table table-dark table-striped admin-table">
+                                        <thead><tr><th>#</th><th>Partial Value</th></tr></thead>
+                                        <tbody id="admin-cookies-table"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card bg-dark border-secondary mb-3">
                         <div class="card-body">
                             <h5 class="card-title"><i class="bi bi-megaphone-fill"></i> Post Announcement</h5>
@@ -432,6 +461,18 @@
                 <div id="logs-container"></div>
             </div>
         </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="bi bi-arrow-counterclockwise"></i> Re-check Failed Accounts</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Download a log of failed accounts from a previous session to re-upload and check them again.</p>
+                <div id="failed-logs-list" class="list-group">
+                    <!-- JS will populate this -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- CAPTCHA Modal -->
@@ -493,6 +534,7 @@
             const proxySelection = document.getElementById('proxy_selection');
             const addProxyForm = document.getElementById('add-proxy-form');
             const adminProxiesTable = document.getElementById('admin-proxies-table');
+            const failedLogsList = document.getElementById('failed-logs-list');
             
             // New Admin Panel Elements
             const proxyScrapeBtns = document.querySelectorAll('.proxy-scrape-btn');
@@ -500,6 +542,7 @@
             const clearBadProxiesBtn = document.getElementById('clear-bad-proxies-btn');
             const scraperStatusDiv = document.getElementById('scraper-status');
             const testerStatusDiv = document.getElementById('tester-status');
+            const adminCookiesTable = document.getElementById('admin-cookies-table');
 
 
             let statusInterval;
@@ -584,12 +627,12 @@
             function updateUI(status) {
                 if (status.running) {
                     startBtn.style.display = 'none'; stopBtn.style.display = 'block';
-                    document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button').forEach(el => {
+                    document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button, #sidebar textarea').forEach(el => {
                         if (el.id !== 'stop-btn') el.disabled = true;
                     });
                 } else {
                     startBtn.style.display = 'block'; stopBtn.style.display = 'none';
-                    document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button').forEach(el => el.disabled = false);
+                    document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button, #sidebar textarea').forEach(el => el.disabled = false);
                     if (statusInterval) { clearInterval(statusInterval); }
                 }
                 const progress = status.total > 0 ? (status.progress / status.total) * 100 : 0;
@@ -624,6 +667,7 @@
                     summaryElement.textContent = status.final_summary;
                     logsContainer.appendChild(summaryElement);
                     logsContainer.scrollTop = logsContainer.scrollHeight;
+                    loadFailedLogs(); // Refresh the failed logs list
                 }
             }
 
@@ -703,6 +747,7 @@
                 document.getElementById('admin-tab-btn').addEventListener('click', () => {
                     loadAdminData();
                     loadAdminProxies();
+                    loadAdminCookies();
                     if (!adminTaskInterval) {
                         adminTaskInterval = setInterval(pollAdminTasks, 2000);
                     }
@@ -794,6 +839,34 @@
                         `;
                         adminProxiesTable.innerHTML += row;
                     });
+                });
+            }
+
+            function loadAdminCookies() {
+                fetch('/admin/hardcoded_cookies').then(res => res.json()).then(cookies => {
+                    adminCookiesTable.innerHTML = '';
+                    cookies.forEach(c => {
+                        const row = `<tr><td>${c.number}</td><td><code>${c.value}</code></td></tr>`;
+                        adminCookiesTable.innerHTML += row;
+                    });
+                });
+            }
+
+            function loadFailedLogs() {
+                fetch('/get_failed_logs').then(res => res.json()).then(data => {
+                    failedLogsList.innerHTML = '';
+                    if (data.logs && data.logs.length > 0) {
+                        data.logs.forEach(logFile => {
+                            const item = document.createElement('a');
+                            item.href = `/download_log/${logFile}`;
+                            item.className = 'list-group-item list-group-item-action bg-dark text-white d-flex justify-content-between align-items-center';
+                            item.innerHTML = `<span><i class="bi bi-file-earmark-text me-2"></i> ${logFile}</span><i class="bi bi-download"></i>`;
+                            item.setAttribute('download', '');
+                            failedLogsList.appendChild(item);
+                        });
+                    } else {
+                        failedLogsList.innerHTML = '<p class="text-muted text-center">No failed account logs found for your user.</p>';
+                    }
                 });
             }
 
@@ -890,10 +963,11 @@
                 proxyScrapeBtns.forEach(button => {
                     button.addEventListener('click', (e) => {
                         const proxyType = e.target.dataset.proxyType;
+                        const limit = document.getElementById('scrape-limit-input').value;
                         fetch('/admin/scrape_proxies', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ type: proxyType })
+                            body: JSON.stringify({ type: proxyType, limit: limit })
                         }).then(res => res.json()).then(data => {
                             if (data.status !== 'success') alert('Error: ' + data.message);
                         });
@@ -929,6 +1003,7 @@
             // Initial loads
             loadGoodProxiesForUser();
             fetchLatestAnnouncement();
+            loadFailedLogs();
             fetchStatus();
             statusInterval = setInterval(fetchStatus, 1500);
         });
