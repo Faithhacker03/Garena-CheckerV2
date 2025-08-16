@@ -54,10 +54,23 @@ from Crypto.Cipher import AES
 # Import placeholder modules
 import change_cookie
 import ken_cookie
-import cookie_config
+# import cookie_config # Replaced by inline class
 import set_cookie
 
 init(autoreset=True)
+
+# --- Placeholder for cookie_config.py content ---
+class cookie_config:
+    """
+    Placeholder class to hold hardcoded cookies for the 'use_cookie_set' feature.
+    This allows admins to view them via the new admin panel feature.
+    """
+    COOKIE_POOL = []
+    # Generate a list of 300 dummy cookies for demonstration/testing purposes
+    for i in range(1, 301):
+        dummy_hex = uuid.uuid4().hex
+        COOKIE_POOL.append({'datadome': f'DUMMYCOOKIE_{i:03d}_{dummy_hex}'})
+
 
 # --- Flask App Setup ---
 app = Flask(__name__)
@@ -575,7 +588,7 @@ def clear_progress(username):
     if os.path.exists(progress_file): os.remove(progress_file)
 
 # PROXY-MOD: Function signature updated to accept proxy_selection
-def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number, proxy_selection, user_info, user_session):
+def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number, proxy_selection, custom_cookie, user_info, user_session):
     log_message(user_session, "[⚠️ VERCEL NOTE] Checker is running on a serverless platform. Task will be terminated after the timeout limit.", "text-warning")
     status_lock = user_session['status_lock']
     stop_event = user_session['stop_event']
@@ -628,7 +641,10 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
         accounts_to_process = accounts[start_from_index:]
         with status_lock: check_status.update({'total': total_accounts, 'progress': start_from_index, 'stats': stats})
         cookie_state = {'pool': [], 'index': -1, 'cooldown': {}}
-        if use_cookie_set:
+        if custom_cookie:
+            cookie_state['pool'] = [custom_cookie]
+            log_message(user_session, "[🍪] Using provided custom DataDome cookie.", "text-info")
+        elif use_cookie_set:
             cookie_state['pool'] = [c.get('datadome') for c in cookie_config.COOKIE_POOL if c.get('datadome')]
             log_message(user_session, f"[🍪] Loaded {len(cookie_state['pool'])} hardcoded DataDome cookies.", "text-info")
         else:
@@ -669,9 +685,11 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                     if result == "[CAPTCHA]":
                         stats['captcha_count'] += 1
                         log_message(user_session, f"[🔴 CAPTCHA] Triggered by cookie ...{current_datadome[-6:]}", "text-danger")
-                        expiry_time = time.time() + 300
-                        cookie_state['cooldown'][current_datadome] = expiry_time
-                        log_message(user_session, f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
+                        # If using a custom cookie, don't put it on cooldown, just pause.
+                        if not custom_cookie:
+                            expiry_time = time.time() + 300
+                            cookie_state['cooldown'][current_datadome] = expiry_time
+                            log_message(user_session, f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
                         with status_lock: check_status['captcha_detected'] = True
                         time.sleep(random.uniform(2, 4))
                         captcha_pause_event.clear()
@@ -824,8 +842,9 @@ def start_check():
     force_restart = 'force_restart' in request.form
     telegram_level_filter = request.form.get('telegram_level_filter', 'none')
     proxy_selection = request.form.get('proxy_selection', 'none') # PROXY-MOD
+    custom_cookie = request.form.get('custom_cookie', '').strip() # CUSTOM COOKIE
     log_message(user_session, "Starting new check...", "text-info")
-    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, proxy_selection, session['user'], user_session )) # PROXY-MOD
+    thread = threading.Thread(target=run_check_task, args=( file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, cookie_number, proxy_selection, custom_cookie, session['user'], user_session )) # PROXY-MOD & CUSTOM COOKIE
     thread.daemon = True; thread.start()
     user_session['thread'] = thread
     return redirect(url_for('index'))
@@ -1009,7 +1028,7 @@ def test_proxy_endpoint():
 
 # --- New Routes for Proxy Scraper and Bulk Tester ---
 
-def scrape_proxies_task(proxy_type):
+def scrape_proxies_task(proxy_type, limit):
     """Background task to scrape proxies from sources."""
     with admin_tasks_lock:
         admin_tasks['scraping'] = {'running': True, 'progress': 0, 'total': 0, 'found': 0, 'message': 'Starting...'}
@@ -1050,8 +1069,16 @@ def scrape_proxies_task(proxy_type):
     current_proxies = load_data(PROXIES_FILE)
     existing_proxies = {(p['proxy'], p['protocol']) for p in current_proxies}
     
+    # Shuffle the list before applying the limit to get a random sample from all sources
+    unique_proxies_list = list(scraped_proxies)
+    random.shuffle(unique_proxies_list)
+    
     added_count = 0
-    for proxy_str in scraped_proxies:
+    for proxy_str in unique_proxies_list:
+        if added_count >= limit:
+            with admin_tasks_lock:
+                 admin_tasks['scraping']['message'] = f"Reached limit of {limit}. Added {added_count} new proxies."
+            break
         if (proxy_str, proxy_type) not in existing_proxies:
             new_proxy = {
                 "id": uuid.uuid4().hex,
@@ -1067,7 +1094,10 @@ def scrape_proxies_task(proxy_type):
     with admin_tasks_lock:
         admin_tasks['scraping']['running'] = False
         admin_tasks['scraping']['found'] = added_count
-        admin_tasks['scraping']['message'] = f"Scraping complete. Added {added_count} new {proxy_type.upper()} proxies."
+        final_message = admin_tasks['scraping'].get('message', '') # Keep limit message if it was set
+        if not final_message.startswith("Reached limit"):
+            final_message = f"Scraping complete. Added {added_count} new {proxy_type.upper()} proxies."
+        admin_tasks['scraping']['message'] = final_message
 
 @app.route('/admin/scrape_proxies', methods=['POST'])
 def scrape_proxies():
@@ -1077,10 +1107,16 @@ def scrape_proxies():
             return jsonify({"status": "error", "message": "A scraping task is already running."}), 409
     
     proxy_type = request.json.get('type')
+    try:
+        limit = int(request.json.get('limit', 500))
+        if limit < 100: limit = 100
+    except (ValueError, TypeError):
+        limit = 500
+        
     if proxy_type not in PROXY_SOURCES:
         return jsonify({"status": "error", "message": "Invalid proxy type."}), 400
 
-    thread = threading.Thread(target=scrape_proxies_task, args=(proxy_type,))
+    thread = threading.Thread(target=scrape_proxies_task, args=(proxy_type, limit))
     thread.daemon = True
     thread.start()
     
@@ -1166,6 +1202,23 @@ def get_admin_task_status():
     with admin_tasks_lock:
         return jsonify(admin_tasks)
 
+# --- Admin route to view hardcoded cookies ---
+@app.route('/admin/hardcoded_cookies')
+def get_hardcoded_cookies():
+    if session.get('user', {}).get('username') != 'admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    
+    cookies_info = []
+    for i, cookie_data in enumerate(cookie_config.COOKIE_POOL):
+        cookie_val = cookie_data.get('datadome', 'N/A')
+        if cookie_val != 'N/A' and len(cookie_val) > 10:
+            partial_cookie = f"...{cookie_val[-10:]}"
+        else:
+            partial_cookie = "Invalid Format"
+        cookies_info.append({"number": i + 1, "value": partial_cookie})
+    
+    return jsonify(cookies_info)
+
 # --- PROXY-MOD: New User Route to Get Good Proxies ---
 @app.route('/get_proxies')
 def get_good_proxies():
@@ -1180,6 +1233,32 @@ def get_latest_announcement():
     announcements = load_data(ANNOUNCEMENTS_FILE)
     if not announcements: return jsonify(None)
     return jsonify(sorted(announcements, key=lambda x: x['timestamp'], reverse=True)[0])
+
+# --- Routes for failed logs ---
+@app.route('/get_failed_logs')
+def get_failed_logs():
+    if 'user' not in session: return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
+    username = session['user']['username']
+    logs_dir = get_logs_directory()
+    user_logs = []
+    if os.path.exists(logs_dir):
+        try:
+            user_logs = [f for f in os.listdir(logs_dir) if f.startswith(f"failed_{username}_") and f.endswith(".txt")]
+        except Exception:
+            pass # Ignore errors if dir doesn't exist etc.
+    return jsonify({"logs": sorted(user_logs, reverse=True)})
+
+@app.route('/download_log/<path:filename>')
+def download_log_file(filename):
+    if 'user' not in session: return redirect(url_for('login'))
+    username = session['user']['username']
+    # Security check: ensure the user can only download their own logs
+    if not filename.startswith(f"failed_{username}_"):
+        return "Unauthorized access to log file.", 403
+    
+    logs_dir = get_logs_directory()
+    return send_from_directory(logs_dir, filename, as_attachment=True)
+
 
 @app.route('/results/<path:filename>')
 def download_file(filename):
