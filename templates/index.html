@@ -164,16 +164,6 @@
                             <div class="form-text text-warning">Free tier is limited to 100 lines.</div>
                             {% endif %}
                         </div>
-
-                        <!-- PROXY-MOD: Proxy selection dropdown -->
-                        <div class="mb-3">
-                            <label for="proxy_selection" class="form-label">Proxy Selection</label>
-                            <select class="form-select" id="proxy_selection" name="proxy_selection">
-                                <option value="none" selected>No Proxy (Use My IP)</option>
-                                <option value="random">Use a Random Good Proxy</option>
-                                <!-- Good proxies will be populated here by JS -->
-                            </select>
-                        </div>
                         
                         <div class="mb-3">
                             <label for="custom_cookie_input" class="form-label">Custom DataDome Cookie (Optional)</label>
@@ -281,53 +271,6 @@
 
                 {% if user.username == 'admin' %}
                 <div class="tab-pane fade" id="admin-tab" role="tabpanel" aria-labelledby="admin-tab-btn">
-                    <!-- Proxy Scraper Card -->
-                    <div class="card bg-dark border-secondary mb-3">
-                        <div class="card-body">
-                            <h5 class="card-title"><i class="bi bi-cloud-download"></i> Proxy Scraper</h5>
-                            <div class="input-group input-group-sm mb-2">
-                                <span class="input-group-text">Max to Add</span>
-                                <input type="number" id="scrape-limit-input" class="form-control" value="500" min="100">
-                            </div>
-                            <div id="proxy-scraper-btns" class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                                <button class="btn btn-sm btn-outline-info proxy-scrape-btn" data-proxy-type="http">Scrape HTTP</button>
-                                <button class="btn btn-sm btn-outline-info proxy-scrape-btn" data-proxy-type="socks4">Scrape SOCKS4</button>
-                                <button class="btn btn-sm btn-outline-info proxy-scrape-btn" data-proxy-type="socks5">Scrape SOCKS5</button>
-                            </div>
-                            <div id="scraper-status" class="mt-2 text-center admin-task-status"></div>
-                        </div>
-                    </div>
-
-                    <!-- Proxy Management Card -->
-                    <div class="card bg-dark border-secondary mb-3">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                             <h5 class="card-title mb-0"><i class="bi bi-shield-shaded"></i> Proxy Management</h5>
-                             <div>
-                                 <button id="test-all-proxies-btn" class="btn btn-sm btn-warning"><i class="bi bi-broadcast"></i> Test All</button>
-                                 <button id="clear-bad-proxies-btn" class="btn btn-sm btn-danger"><i class="bi bi-trash2"></i> Clear Bad</button>
-                             </div>
-                        </div>
-                        <div class="card-body">
-                            <div id="tester-status" class="mb-2 text-center admin-task-status"></div>
-                            <form id="add-proxy-form" class="mb-3">
-                                <div class="input-group">
-                                    <input type="text" id="proxy-input" class="form-control" placeholder="ip:port" required>
-                                    <select id="proxy-protocol" class="form-select" style="max-width: 120px;">
-                                        <option value="http" selected>HTTP</option>
-                                        <option value="socks4">SOCKS4</option>
-                                        <option value="socks5">SOCKS5</option>
-                                    </select>
-                                    <button class="btn btn-success" type="submit">Add</button>
-                                </div>
-                            </form>
-                            <div class="table-responsive" style="max-height: 200px;">
-                                <table class="table table-dark table-striped admin-table">
-                                    <thead><tr><th>Proxy</th><th>Protocol</th><th>Status</th><th>Actions</th></tr></thead>
-                                    <tbody id="admin-proxies-table"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
                     
                     <div class="card bg-dark border-secondary mb-3">
                         <div class="card-body">
@@ -531,22 +474,11 @@
             const adminKeysTable = document.getElementById('admin-keys-table');
             const announcementForm = document.getElementById('announcement-form');
             const announcementPlaceholder = document.getElementById('announcement-placeholder');
-            const proxySelection = document.getElementById('proxy_selection');
-            const addProxyForm = document.getElementById('add-proxy-form');
-            const adminProxiesTable = document.getElementById('admin-proxies-table');
             const failedLogsList = document.getElementById('failed-logs-list');
-            
-            // New Admin Panel Elements
-            const proxyScrapeBtns = document.querySelectorAll('.proxy-scrape-btn');
-            const testAllProxiesBtn = document.getElementById('test-all-proxies-btn');
-            const clearBadProxiesBtn = document.getElementById('clear-bad-proxies-btn');
-            const scraperStatusDiv = document.getElementById('scraper-status');
-            const testerStatusDiv = document.getElementById('tester-status');
             const adminCookiesTable = document.getElementById('admin-cookies-table');
 
 
             let statusInterval;
-            let adminTaskInterval;
             let lastLogCount = 0;
             const APPEARANCE_STORAGE_KEY = 'garenaCheckerAppearance';
 
@@ -746,23 +678,7 @@
                 });
                 document.getElementById('admin-tab-btn').addEventListener('click', () => {
                     loadAdminData();
-                    loadAdminProxies();
                     loadAdminCookies();
-                    if (!adminTaskInterval) {
-                        adminTaskInterval = setInterval(pollAdminTasks, 2000);
-                    }
-                });
-                document.getElementById('controls-tab-btn').addEventListener('click', () => {
-                    if (adminTaskInterval) {
-                        clearInterval(adminTaskInterval);
-                        adminTaskInterval = null;
-                    }
-                });
-                 document.getElementById('settings-tab-btn').addEventListener('click', () => {
-                    if (adminTaskInterval) {
-                        clearInterval(adminTaskInterval);
-                        adminTaskInterval = null;
-                    }
                 });
             }
 
@@ -801,47 +717,6 @@
                 });
             }
             
-            function loadGoodProxiesForUser() {
-                fetch('/get_proxies').then(res => res.json()).then(proxies => {
-                    while (proxySelection.options.length > 2) {
-                        proxySelection.remove(2);
-                    }
-                    proxies.forEach(p => {
-                        const option = new Option(`${p.proxy} (${p.protocol})`, p.proxy);
-                        proxySelection.add(option);
-                    });
-                });
-            }
-
-            function loadAdminProxies() {
-                fetch('/admin/proxies').then(res => res.json()).then(proxies => {
-                    adminProxiesTable.innerHTML = '';
-                    proxies.forEach(p => {
-                        let statusBadge;
-                        if (p.status === 'good') statusBadge = `<span class="badge bg-success">Good</span>`;
-                        else if (p.status === 'bad') statusBadge = `<span class="badge bg-danger">Bad</span>`;
-                        else statusBadge = `<span class="badge bg-secondary">Untested</span>`;
-                        
-                        const row = `
-                            <tr data-proxy-id="${p.id}">
-                                <td><code>${p.proxy}</code></td>
-                                <td>${p.protocol.toUpperCase()}</td>
-                                <td class="status-cell">${statusBadge}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-info test-proxy-btn" title="Test Proxy">
-                                        <i class="bi bi-broadcast"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-danger delete-proxy-btn" title="Delete Proxy">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                        adminProxiesTable.innerHTML += row;
-                    });
-                });
-            }
-
             function loadAdminCookies() {
                 fetch('/admin/hardcoded_cookies').then(res => res.json()).then(cookies => {
                     adminCookiesTable.innerHTML = '';
@@ -870,138 +745,7 @@
                 });
             }
 
-            if (addProxyForm) {
-                addProxyForm.addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    const proxy = document.getElementById('proxy-input').value;
-                    const protocol = document.getElementById('proxy-protocol').value;
-                    fetch('/admin/add_proxy', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ proxy, protocol })
-                    }).then(res => res.json()).then(data => {
-                        if (data.status === 'success') {
-                            loadAdminProxies();
-                            addProxyForm.reset();
-                        } else {
-                            alert('Error: ' + data.message);
-                        }
-                    });
-                });
-            }
-
-            if (adminProxiesTable) {
-                adminProxiesTable.addEventListener('click', (e) => {
-                    const button = e.target.closest('button');
-                    if (!button) return;
-                    
-                    const row = button.closest('tr');
-                    const proxyId = row.dataset.proxyId;
-
-                    if (button.classList.contains('test-proxy-btn')) {
-                        button.disabled = true;
-                        button.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-                        fetch('/admin/test_proxy', {
-                            method: 'POST', headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ id: proxyId })
-                        }).then(res => res.json()).then(data => {
-                            if (data.status === 'success' && data.proxy) {
-                                let statusBadge;
-                                if (data.proxy.status === 'good') statusBadge = `<span class="badge bg-success">Good</span>`;
-                                else statusBadge = `<span class="badge bg-danger">Bad</span>`;
-                                row.querySelector('.status-cell').innerHTML = statusBadge;
-                            }
-                        }).finally(() => {
-                           button.disabled = false;
-                           button.innerHTML = '<i class="bi bi-broadcast"></i>';
-                        });
-                    } else if (button.classList.contains('delete-proxy-btn')) {
-                        if (!confirm('Are you sure you want to delete this proxy?')) return;
-                        fetch('/admin/delete_proxy', {
-                            method: 'POST', headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ id: proxyId })
-                        }).then(res => res.json()).then(data => {
-                            if (data.status === 'success') row.remove();
-                            else alert('Error deleting proxy.');
-                        });
-                    }
-                });
-            }
-
-            // --- New JS for Admin Proxy Scraper & Tester ---
-            function pollAdminTasks() {
-                fetch('/admin/task_status').then(res => res.json()).then(data => {
-                    let isScraping = data.scraping && data.scraping.running;
-                    let isTesting = data.testing && data.testing.running;
-                    
-                    if (isScraping) {
-                        const s = data.scraping;
-                        scraperStatusDiv.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${s.message} (${s.progress}/${s.total})`;
-                        proxyScrapeBtns.forEach(btn => btn.disabled = true);
-                    } else if (data.scraping) {
-                        scraperStatusDiv.textContent = data.scraping.message;
-                        proxyScrapeBtns.forEach(btn => btn.disabled = false);
-                        if (data.scraping.found > 0) {
-                            loadAdminProxies();
-                            data.scraping.found = 0; // Reset after loading
-                        }
-                    }
-
-                    if (isTesting) {
-                        const t = data.testing;
-                        testerStatusDiv.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${t.message} (${t.progress}/${t.total})`;
-                        testAllProxiesBtn.disabled = true;
-                    } else if (data.testing) {
-                        testerStatusDiv.textContent = data.testing.message;
-                        testAllProxiesBtn.disabled = false;
-                        loadAdminProxies();
-                        loadGoodProxiesForUser(); // Update user dropdown too
-                    }
-                });
-            }
-            
-            if (proxyScrapeBtns) {
-                proxyScrapeBtns.forEach(button => {
-                    button.addEventListener('click', (e) => {
-                        const proxyType = e.target.dataset.proxyType;
-                        const limit = document.getElementById('scrape-limit-input').value;
-                        fetch('/admin/scrape_proxies', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ type: proxyType, limit: limit })
-                        }).then(res => res.json()).then(data => {
-                            if (data.status !== 'success') alert('Error: ' + data.message);
-                        });
-                    });
-                });
-            }
-
-            if (testAllProxiesBtn) {
-                testAllProxiesBtn.addEventListener('click', () => {
-                    fetch('/admin/test_all_proxies', { method: 'POST' })
-                        .then(res => res.json()).then(data => {
-                            if (data.status !== 'success') alert('Error: ' + data.message);
-                        });
-                });
-            }
-
-            if (clearBadProxiesBtn) {
-                clearBadProxiesBtn.addEventListener('click', () => {
-                    if (!confirm('Are you sure you want to remove all "bad" proxies?')) return;
-                    fetch('/admin/clear_bad_proxies', { method: 'POST' })
-                        .then(res => res.json()).then(data => {
-                            if (data.status === 'success') {
-                                alert(data.message);
-                                loadAdminProxies();
-                            } else {
-                                alert('An error occurred.');
-                            }
-                        });
-                });
-            }
-
-
             // Initial loads
-            loadGoodProxiesForUser();
             fetchLatestAnnouncement();
             loadFailedLogs();
             fetchStatus();
